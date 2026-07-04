@@ -15,16 +15,23 @@ import {
  */
 export function run(stage: Stage, blocks: Block[]): RunResult {
   const trace: TraceEvent[] = [];
+  const blockIds: (string | null)[] = [];
   const state: SimState = initialState(stage);
   let steps = 0;
   let halted = false;
   let cleared = false;
+  const remainingGems = new Set((stage.gems ?? []).map((g) => `${g.x},${g.y}`));
+
+  const push = (ev: TraceEvent, blockId: string) => {
+    trace.push(ev);
+    blockIds.push(blockId);
+  };
 
   const exec = (list: Block[]) => {
     for (const block of list) {
       if (halted) return;
       if (steps >= stage.maxSteps) {
-        trace.push({ type: 'stepLimit', at: { ...state.pos }, dir: state.dir });
+        push({ type: 'stepLimit', at: { ...state.pos }, dir: state.dir }, block.id);
         halted = true;
         return;
       }
@@ -32,15 +39,20 @@ export function run(stage: Stage, blocks: Block[]): RunResult {
       switch (block.kind) {
         case 'move': {
           if (isBlocked(stage, state)) {
-            trace.push({ type: 'crash', at: { ...state.pos }, dir: state.dir });
+            push({ type: 'crash', at: { ...state.pos }, dir: state.dir }, block.id);
             halted = true;
             return;
           }
           const from = { ...state.pos };
           state.pos = forwardPos(state);
-          trace.push({ type: 'move', from, to: { ...state.pos }, dir: state.dir });
+          push({ type: 'move', from, to: { ...state.pos }, dir: state.dir }, block.id);
+          const gemKey = `${state.pos.x},${state.pos.y}`;
+          if (remainingGems.has(gemKey)) {
+            remainingGems.delete(gemKey);
+            push({ type: 'gem', at: { ...state.pos } }, block.id);
+          }
           if (isOnGoal(stage, state)) {
-            trace.push({ type: 'goal', at: { ...state.pos }, dir: state.dir });
+            push({ type: 'goal', at: { ...state.pos }, dir: state.dir }, block.id);
             halted = true;
             cleared = true;
             return;
@@ -49,11 +61,11 @@ export function run(stage: Stage, blocks: Block[]): RunResult {
         }
         case 'turnLeft':
           state.dir = turnLeft(state.dir);
-          trace.push({ type: 'turn', dir: state.dir, at: { ...state.pos } });
+          push({ type: 'turn', dir: state.dir, at: { ...state.pos } }, block.id);
           break;
         case 'turnRight':
           state.dir = turnRight(state.dir);
-          trace.push({ type: 'turn', dir: state.dir, at: { ...state.pos } });
+          push({ type: 'turn', dir: state.dir, at: { ...state.pos } }, block.id);
           break;
         case 'repeat': {
           const times = block.times ?? 1;
@@ -67,7 +79,7 @@ export function run(stage: Stage, blocks: Block[]): RunResult {
           while (!halted) {
             // 空の body でも steps を消費させ、maxSteps で必ず停止させる
             if (steps >= stage.maxSteps) {
-              trace.push({ type: 'stepLimit', at: { ...state.pos }, dir: state.dir });
+              push({ type: 'stepLimit', at: { ...state.pos }, dir: state.dir }, block.id);
               halted = true;
               return;
             }
@@ -87,7 +99,7 @@ export function run(stage: Stage, blocks: Block[]): RunResult {
   };
 
   exec(blocks);
-  return { trace, cleared };
+  return { trace, cleared, blockIds };
 }
 
 /** 星評価に使うブロック数（repeat の中身も数える） */

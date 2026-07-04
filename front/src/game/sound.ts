@@ -66,6 +66,19 @@ class SoundManager {
     });
   }
 
+  /** 宝石をひろったときの「きらん」音 */
+  gem() {
+    this.sfx(() => {
+      this.tone(880, 0.1, 'sine', 0.07);
+      this.tone(1320, 0.12, 'sine', 0.06, 0.06);
+    });
+  }
+
+  /** クリアダイアログで★が1つずつ出現するときの「ぽろん」音(★の数だけ音程が上がる) */
+  star(index: number) {
+    this.sfx(() => this.tone(660 + index * 110, 0.16, 'triangle', 0.07));
+  }
+
   toggleSfx(): boolean {
     this.sfxEnabled = !this.sfxEnabled;
     localStorage.setItem(SFX_KEY, this.sfxEnabled ? 'on' : 'off');

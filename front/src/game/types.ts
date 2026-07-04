@@ -51,6 +51,11 @@ export interface Stage {
   puzzle?: Puzzle;
   /** 上級のコード初期テンプレート(未指定なら共通テンプレート) */
   template?: string;
+  /**
+   * 集める要素(宝石)の位置。データファイルには含まれず、front/src/game/gems.ts が
+   * しょきゅうモードのナビステージに実行時決定的に付与する演出用フィールド。
+   */
+  gems?: Pos[];
 }
 
 /** 実行トレース: 初級(ブロック)・上級(Cコード)共通のフォーマット */
@@ -60,6 +65,8 @@ export type TraceEvent =
   | { type: 'crash'; at: Pos; dir: Direction }
   | { type: 'goal'; at: Pos; dir: Direction }
   | { type: 'stepLimit'; at: Pos; dir: Direction }
+  // 集める要素(宝石)。しょきゅうモードのインタプリタのみが発行する(Cサンドボックスは発行しない)
+  | { type: 'gem'; at: Pos }
   // 配列パズル用
   | { type: 'swap'; i: number; j: number }
   | { type: 'solved' }     // 達成条件を満たした
@@ -68,4 +75,6 @@ export type TraceEvent =
 export interface RunResult {
   trace: TraceEvent[];
   cleared: boolean;
+  /** trace と同じ長さ。各イベントを発生させたブロックの id(BlockEditor のハイライト用) */
+  blockIds: (string | null)[];
 }

@@ -33,10 +33,10 @@ describe('画面フロー', () => {
     await user.click(addMove);
     await user.click(screen.getByRole('button', { name: '▶ じっこう' }));
 
-    // 再生アニメーション(300ms/step × 3イベント)を待ってクリア表示
+    // 再生アニメーション(300ms/step × 3イベント + クリアダイアログの表示遅延)を待ってクリア表示
     await waitFor(() => expect(screen.getByText('クリア!')).toBeTruthy(), { timeout: 5000 });
-    // 2ブロック(★3しきい値=2)なので星3
-    expect(screen.getByText('★★★')).toBeTruthy();
+    // 2ブロック(★3しきい値=2)なので星3(★は1つずつポップインするため個別のspanで描画される)
+    expect(document.querySelector('.clear-stars')?.textContent).toBe('★★★');
 
     // 進捗が localStorage に保存される
     const saved = JSON.parse(localStorage.getItem('algorithm-game-progress') ?? '{}');
