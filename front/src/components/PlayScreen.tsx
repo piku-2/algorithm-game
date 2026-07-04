@@ -5,6 +5,7 @@ import { CODE_TEMPLATE } from '../game/stages';
 import { runC } from '../game/api';
 import { sound } from '../game/sound';
 import type { Skin } from '../game/skins';
+import { loadRecords, saveRecords, type Records } from '../game/records';
 import { Board } from './Board';
 import { ArrayBoard } from './ArrayBoard';
 import { BlockEditor } from './BlockEditor';
@@ -58,6 +59,9 @@ function traceSwaps(trace: TraceEvent[]): number {
   return trace.filter((e) => e.type === 'swap').length;
 }
 
+/** ゴール到達時に確定する星数とスコア(ブロック数/ステップ数/交換回数。じこベスト判定に使う) */
+type GoalResult = { stars: 1 | 2 | 3; score: number };
+
 export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
   const initialCode = stage.template ?? CODE_TEMPLATE;
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -76,6 +80,9 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const [stepping, setStepping] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
+  const [isNewRecord, setIsNewRecord] = useState(false);
+  const [bestScore, setBestScore] = useState<number | null>(null);
+  const recordsRef = useRef<Records>(loadRecords());
   const [sfxOn, setSfxOn] = useState(sound.sfxEnabled);
   const [bgmOn, setBgmOn] = useState(sound.bgmEnabled);
   const timerRef = useRef<number | null>(null);
@@ -84,7 +91,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     trace: TraceEvent[];
     blockIds?: (string | null)[];
     i: number;
-    starsOnGoal: () => 1 | 2 | 3;
+    starsOnGoal: () => GoalResult;
   } | null>(null);
   const stepStartingRef = useRef(false);
   // このステージに来てからの実行回数・クラッシュ回数(こうどうバッジ判定用。reset()では減らさない)
@@ -118,6 +125,8 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     setStars(null);
     setCodeError(null);
     setActiveBlockId(null);
+    setIsNewRecord(false);
+    setBestScore(null);
   }, [stage]);
 
   useEffect(() => clearPendingTimeouts, []);
@@ -145,7 +154,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
 
   /** 1件のトレースイベントを盤面/状態に反映する(自動再生・ステップ実行の共通処理) */
   const applyEvent = useCallback(
-    (ev: TraceEvent, starsOnGoal: () => 1 | 2 | 3) => {
+    (ev: TraceEvent, starsOnGoal: () => GoalResult) => {
       switch (ev.type) {
         case 'move':
           setTrail((t) => [...t, ev.from]);
@@ -174,8 +183,16 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
         case 'solved': {
           setStatus('goal');
           sound.goal();
-          const s = starsOnGoal();
+          const { stars: s, score } = starsOnGoal();
           setStars(s);
+          const prevBest = recordsRef.current[stage.id];
+          const isNew = prevBest === undefined || score < prevBest;
+          if (isNew) {
+            recordsRef.current = { ...recordsRef.current, [stage.id]: score };
+            saveRecords(recordsRef.current);
+          }
+          setIsNewRecord(isNew);
+          setBestScore(isNew ? score : prevBest);
           onClear(stage.id, s, {
             firstTry: runCountRef.current === 1,
             noCrash: crashCountRef.current === 0,
@@ -204,7 +221,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
    * starsOnGoal はゴール(達成)イベント到達時に星数を決めるために呼ぶ。
    */
   const playTrace = useCallback(
-    (trace: TraceEvent[], starsOnGoal: () => 1 | 2 | 3, blockIds?: (string | null)[]) => {
+    (trace: TraceEvent[], starsOnGoal: () => GoalResult, blockIds?: (string | null)[]) => {
       if (trace.length === 0) {
         setStatus('editing');
         return;
@@ -231,7 +248,10 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     return {
       trace: result.trace,
       blockIds: result.blockIds,
-      starsOnGoal: () => starsFor(stage, countBlocks(blocks)),
+      starsOnGoal: (): GoalResult => {
+        const score = countBlocks(blocks);
+        return { stars: starsFor(stage, score), score };
+      },
     };
   };
 
@@ -248,10 +268,10 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     return {
       trace,
       blockIds: undefined as (string | null)[] | undefined,
-      starsOnGoal: () => {
+      starsOnGoal: (): GoalResult => {
         const score = stage.puzzle ? traceSwaps(trace) : traceSteps(trace);
         setLastScore(score);
-        return starsFor(stage, score);
+        return { stars: starsFor(stage, score), score };
       },
     };
   };
@@ -432,6 +452,11 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
               <p>交換(swap)回数: {lastScore}回</p>
             ) : (
               <p>実行ステップ数: {lastScore}</p>
+            )}
+            {bestScore !== null && (
+              <p className={isNewRecord ? 'new-record' : 'best-record'}>
+                {isNewRecord ? '🏅 じこベストこうしん!' : `じこベスト: ${bestScore}`}
+              </p>
             )}
             <div className="clear-actions">
               <button onClick={reset}>もういちど</button>
