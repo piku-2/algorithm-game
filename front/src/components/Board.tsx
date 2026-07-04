@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import type { Direction, Pos, Stage } from '../game/types';
 import type { Skin } from '../game/skins';
 
@@ -19,6 +19,13 @@ const ROTATION: Record<Direction, number> = {
 
 const CONFETTI = ['🎉', '✨', '🎊', '⭐', '💫', '🎈', '✨', '🎊'];
 
+const CRASH_QUIPS = ['いたた!', 'あいたっ!', 'ぶつかっちゃった!', 'かべだ!'];
+const GOAL_QUIPS = ['やったー!', 'ゴール!', 'できた!', 'せいこう!'];
+
+function pickQuip(list: string[]): string {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
 interface Props {
   stage: Stage;
   pos: Pos;
@@ -29,6 +36,14 @@ interface Props {
 }
 
 export function Board({ stage, pos, dir, crashed, goaled, skin }: Props) {
+  const [quip, setQuip] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (crashed) setQuip(pickQuip(CRASH_QUIPS));
+    else if (goaled) setQuip(pickQuip(GOAL_QUIPS));
+    else setQuip(null);
+  }, [crashed, goaled]);
+
   const cols = stage.grid[0]?.length ?? 0;
   // 大きな盤面(最大27列)でも収まるようセルサイズを自動調整する
   const cellSize = Math.max(18, Math.min(48, Math.floor(620 / cols)));
@@ -81,6 +96,20 @@ export function Board({ stage, pos, dir, crashed, goaled, skin }: Props) {
             </span>
           ))}
         </div>
+      )}
+      {quip && (
+        <span
+          key={quip}
+          className={`speech-bubble ${crashed ? 'speech-bubble-crash' : 'speech-bubble-goal'}`}
+          style={
+            {
+              '--px': pos.x,
+              '--py': pos.y,
+            } as CSSProperties
+          }
+        >
+          {quip}
+        </span>
       )}
     </div>
   );
