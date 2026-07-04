@@ -45,6 +45,8 @@ export function StageSelect({ mode, stages, progress, onSelect, onBack }: Props)
     [stages, progress],
   );
   const visible = stages.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const worldClearedCount = visible.filter((s) => progress[s.id]).length;
+  const worldConquered = visible.length > 0 && worldClearedCount >= visible.length;
 
   return (
     <div className="stage-select">
@@ -61,10 +63,20 @@ export function StageSelect({ mode, stages, progress, onSelect, onBack }: Props)
         </button>
         <span className="world-label">
           {world.emoji} {world.name}ワールド（{page + 1} / {pages}）
+          {worldConquered && <span className="world-crown"> 👑せいは!</span>}
         </span>
         <button disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>
           つぎ →
         </button>
+      </div>
+      <div className="world-progress">
+        <div
+          className="world-progress-bar"
+          style={{ width: `${(worldClearedCount / Math.max(1, visible.length)) * 100}%` }}
+        />
+        <span className="world-progress-label">
+          {worldClearedCount} / {visible.length}
+        </span>
       </div>
       <div className={`stage-cards world-${page % WORLDS.length}`}>
         {visible.map((stage, i) => {
