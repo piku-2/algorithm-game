@@ -39,9 +39,10 @@ export function Board({ stage, pos, dir, crashed, goaled, skin }: Props) {
   const [quip, setQuip] = useState<string | null>(null);
 
   useEffect(() => {
-    if (crashed) setQuip(pickQuip(CRASH_QUIPS));
-    else if (goaled) setQuip(pickQuip(GOAL_QUIPS));
+    if (crashed) setQuip(pickQuip(skin?.crashQuips ?? CRASH_QUIPS));
+    else if (goaled) setQuip(pickQuip(skin?.goalQuips ?? GOAL_QUIPS));
     else setQuip(null);
+    // skin の変更自体ではセリフを出し直さない(crashed/goaled の立ち上がりのみ反応)
   }, [crashed, goaled]);
 
   const cols = stage.grid[0]?.length ?? 0;

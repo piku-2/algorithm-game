@@ -3,15 +3,53 @@ export interface Skin {
   emoji: string | null; // null = やじるし(方向グリフ)を使うデフォルトスキン
   name: string;
   unlockStars: number;
+  /** クラッシュ/ゴール時のセリフ(未指定ならBoard.tsxの共通セリフを使う) */
+  crashQuips?: string[];
+  goalQuips?: string[];
 }
 
 export const SKINS: Skin[] = [
   { id: 'arrow', emoji: null, name: 'やじるし', unlockStars: 0 },
-  { id: 'cat', emoji: '🐱', name: 'ねこ', unlockStars: 10 },
-  { id: 'robot', emoji: '🤖', name: 'ロボット', unlockStars: 30 },
-  { id: 'frog', emoji: '🐸', name: 'かえる', unlockStars: 60 },
-  { id: 'dragon', emoji: '🐲', name: 'ドラゴン', unlockStars: 100 },
-  { id: 'rocket', emoji: '🚀', name: 'ロケット', unlockStars: 150 },
+  {
+    id: 'cat',
+    emoji: '🐱',
+    name: 'ねこ',
+    unlockStars: 10,
+    crashQuips: ['にゃにゃっ!', 'ふにゃっ...'],
+    goalQuips: ['にゃー! やったー!', 'ゴロゴロ~'],
+  },
+  {
+    id: 'robot',
+    emoji: '🤖',
+    name: 'ロボット',
+    unlockStars: 30,
+    crashQuips: ['ビービー! エラー', 'ガガガッ'],
+    goalQuips: ['ピピッ! せいこう!', 'ミッションかんりょう'],
+  },
+  {
+    id: 'frog',
+    emoji: '🐸',
+    name: 'かえる',
+    unlockStars: 60,
+    crashQuips: ['ケロッ...いたい', 'げこっ'],
+    goalQuips: ['ケロケロ~! やったー!', 'ぴょんぴょん!'],
+  },
+  {
+    id: 'dragon',
+    emoji: '🐲',
+    name: 'ドラゴン',
+    unlockStars: 100,
+    crashQuips: ['ガオ! ぶつかった', 'グルル...'],
+    goalQuips: ['ゴォォ! せいこう!', 'かえんほうしゃ!(いみは ない)'],
+  },
+  {
+    id: 'rocket',
+    emoji: '🚀',
+    name: 'ロケット',
+    unlockStars: 150,
+    crashQuips: ['ゴツン! きけん', 'エンジンていし'],
+    goalQuips: ['シュ~ッ! はっしゃせいこう!', 'ちきゅうにきかんちゅう'],
+  },
 ];
 
 export function isSkinUnlocked(skin: Skin, totalStars: number): boolean {
