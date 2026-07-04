@@ -481,6 +481,33 @@ h1, h2, h3 {
   pointer-events: none;
 }
 
+.gem {
+  position: absolute;
+  left: calc(var(--px) * (var(--cell-size) + 2px));
+  top: calc(var(--py) * (var(--cell-size) + 2px));
+  width: var(--cell-size);
+  height: var(--cell-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--cell-size) * 0.55);
+  z-index: 1;
+  pointer-events: none;
+  animation: gem-sparkle 1.2s ease-in-out infinite;
+}
+
+@keyframes gem-sparkle {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  50% { transform: scale(1.15) rotate(8deg); }
+}
+
+.gem-counter {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #2a8fa0;
+}
+
 .player {
   position: absolute;
   left: calc(var(--px) * (var(--cell-size) + 2px));

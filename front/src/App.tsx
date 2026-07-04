@@ -15,6 +15,7 @@ import {
   type BehaviorFlags,
 } from './game/achievements';
 import { currentStreak, hasClearedToday, pickDailyStage, recordDailyClear } from './game/dailyChallenge';
+import { withGems } from './game/gems';
 import { TitleScreen } from './components/TitleScreen';
 import { StageSelect, type Progress } from './components/StageSelect';
 import { PlayScreen, type ClearMeta } from './components/PlayScreen';
@@ -37,7 +38,7 @@ function loadLocalProgress(): Progress {
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'title' });
-  const [stages, setStages] = useState<Stage[]>(BUNDLED_STAGES);
+  const [stages, setStages] = useState<Stage[]>(() => BUNDLED_STAGES.map(withGems));
   const [apiAvailable, setApiAvailable] = useState(false);
   const [progress, setProgress] = useState<Progress>(loadLocalProgress);
   const [skinId, setSkinId] = useState<string>(loadSkinId);
@@ -55,7 +56,7 @@ export default function App() {
           fetchProgress().catch(() => ({}) as Progress),
         ]);
         if (cancelled) return;
-        setStages(remoteStages);
+        setStages(remoteStages.map(withGems));
         setApiAvailable(true);
         // サーバー側の進捗とローカルの進捗は良い方を採用してマージ
         setProgress((local) => {

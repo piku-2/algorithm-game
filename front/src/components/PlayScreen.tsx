@@ -72,6 +72,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
   const [pos, setPos] = useState<Pos>({ x: stage.start.x, y: stage.start.y });
   const [dir, setDir] = useState<Direction>(stage.start.dir);
   const [trail, setTrail] = useState<Pos[]>([]);
+  const [collectedGems, setCollectedGems] = useState<Pos[]>([]);
   const [values, setValues] = useState<number[]>(stage.puzzle?.values ?? []);
   const [lastSwap, setLastSwap] = useState<[number, number] | null>(null);
   const [speed, setSpeed] = useState(300); // ms / step
@@ -120,6 +121,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     setPos({ x: stage.start.x, y: stage.start.y });
     setDir(stage.start.dir);
     setTrail([]);
+    setCollectedGems([]);
     setValues(stage.puzzle?.values ?? []);
     setLastSwap(null);
     setStars(null);
@@ -164,6 +166,10 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
         case 'turn':
           setDir(ev.dir);
           sound.turn();
+          break;
+        case 'gem':
+          setCollectedGems((g) => [...g, ev.at]);
+          sound.gem();
           break;
         case 'swap':
           setValues((vs) => {
@@ -355,7 +361,13 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
               goaled={status === 'goal'}
               skin={skin}
               trail={trail}
+              collectedGems={collectedGems}
             />
+          )}
+          {stage.gems && stage.gems.length > 0 && (
+            <p className="gem-counter">
+              💎 {collectedGems.length} / {stage.gems.length}
+            </p>
           )}
           <div className="controls">
             {stage.mode === 'block' ? (

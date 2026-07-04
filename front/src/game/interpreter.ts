@@ -20,6 +20,7 @@ export function run(stage: Stage, blocks: Block[]): RunResult {
   let steps = 0;
   let halted = false;
   let cleared = false;
+  const remainingGems = new Set((stage.gems ?? []).map((g) => `${g.x},${g.y}`));
 
   const push = (ev: TraceEvent, blockId: string) => {
     trace.push(ev);
@@ -45,6 +46,11 @@ export function run(stage: Stage, blocks: Block[]): RunResult {
           const from = { ...state.pos };
           state.pos = forwardPos(state);
           push({ type: 'move', from, to: { ...state.pos }, dir: state.dir }, block.id);
+          const gemKey = `${state.pos.x},${state.pos.y}`;
+          if (remainingGems.has(gemKey)) {
+            remainingGems.delete(gemKey);
+            push({ type: 'gem', at: { ...state.pos } }, block.id);
+          }
           if (isOnGoal(stage, state)) {
             push({ type: 'goal', at: { ...state.pos }, dir: state.dir }, block.id);
             halted = true;

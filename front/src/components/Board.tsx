@@ -35,9 +35,20 @@ interface Props {
   skin?: Skin;
   /** 通過したマス(あしあと表示用)。古いものほど薄く表示する */
   trail?: Pos[];
+  /** すでに集めた宝石の位置(stage.gems のうち非表示にするもの) */
+  collectedGems?: Pos[];
 }
 
-export function Board({ stage, pos, dir, crashed, goaled, skin, trail = [] }: Props) {
+export function Board({
+  stage,
+  pos,
+  dir,
+  crashed,
+  goaled,
+  skin,
+  trail = [],
+  collectedGems = [],
+}: Props) {
   const [quip, setQuip] = useState<string | null>(null);
 
   useEffect(() => {
@@ -84,6 +95,21 @@ export function Board({ stage, pos, dir, crashed, goaled, skin, trail = [] }: Pr
               ・
             </span>
           ))}
+        </div>
+      )}
+      {stage.gems && stage.gems.length > 0 && (
+        <div className="gems" aria-hidden="true">
+          {stage.gems
+            .filter((g) => !collectedGems.some((c) => c.x === g.x && c.y === g.y))
+            .map((g, i) => (
+              <span
+                key={i}
+                className="gem"
+                style={{ '--px': g.x, '--py': g.y } as CSSProperties}
+              >
+                💎
+              </span>
+            ))}
         </div>
       )}
       <span
