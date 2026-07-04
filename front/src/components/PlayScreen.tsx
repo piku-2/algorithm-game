@@ -30,6 +30,17 @@ interface Props {
   skin?: Skin;
 }
 
+/** 編集中のブロック数と★のボーダーをライブ表示する */
+function BlockCounter({ count, thresholds }: { count: number; thresholds: [number, number] }) {
+  const [star3, star2] = thresholds;
+  const pace = count === 0 ? 3 : count <= star3 ? 3 : count <= star2 ? 2 : 1;
+  return (
+    <p className={`block-counter block-counter-pace${pace}`}>
+      つかったブロック: <b>{count}</b>こ（★3は{star3}こ・★2は{star2}こまで）
+    </p>
+  );
+}
+
 /** トレース中の move/turn の数(上級ナビの星評価に使う実行ステップ数) */
 function traceSteps(trace: TraceEvent[]): number {
   return trace.filter((e) => e.type === 'move' || e.type === 'turn').length;
@@ -254,15 +265,18 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
         </div>
         <div className="editor-pane">
           {stage.mode === 'block' ? (
-            <BlockEditor
-              allowed={stage.allowedBlocks}
-              blocks={blocks}
-              onChange={setBlocks}
-              disabled={busy}
-              selectedContainerId={selectedContainerId}
-              onSelectContainer={setSelectedContainerId}
-              activeBlockId={activeBlockId}
-            />
+            <>
+              <BlockCounter count={countBlocks(blocks)} thresholds={stage.starThresholds} />
+              <BlockEditor
+                allowed={stage.allowedBlocks}
+                blocks={blocks}
+                onChange={setBlocks}
+                disabled={busy}
+                selectedContainerId={selectedContainerId}
+                onSelectContainer={setSelectedContainerId}
+                activeBlockId={activeBlockId}
+              />
+            </>
           ) : (
             <CodeEditor code={code} onChange={setCode} disabled={busy} error={codeError} />
           )}

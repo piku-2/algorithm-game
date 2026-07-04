@@ -272,6 +272,20 @@ h1, h2, h3 {
   min-width: 340px;
 }
 
+.block-counter {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: #4a5268;
+}
+
+.block-counter b {
+  font-size: 1rem;
+}
+
+.block-counter-pace3 b { color: #2fa86b; }
+.block-counter-pace2 b { color: #d9971e; }
+.block-counter-pace1 b { color: #d9534f; }
+
 /* 盤面 */
 
 .board {
