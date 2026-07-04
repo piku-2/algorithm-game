@@ -1,0 +1,23 @@
+services:
+  back:
+    build:
+      context: .
+      dockerfile: back/Dockerfile
+    volumes:
+      - progress:/data
+    # サンドボックスの追加防壁: 特権なし・読み取り専用FS(一時領域のみ書き込み可)
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+  front:
+    build:
+      context: .
+      dockerfile: front/Dockerfile
+    ports:
+      - "8000:80"
+    depends_on:
+      - back
+
+volumes:
+  progress:
