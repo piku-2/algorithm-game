@@ -1,11 +1,20 @@
 import type { CSSProperties } from 'react';
 import type { Direction, Pos, Stage } from '../game/types';
+import type { Skin } from '../game/skins';
 
 const ARROW: Record<Direction, string> = {
   up: '▲',
   down: '▼',
   left: '◀',
   right: '▶',
+};
+
+// きせかえスキン用: 絵文字は「うえ向き」で描かれている想定で回転させる
+const ROTATION: Record<Direction, number> = {
+  up: 0,
+  right: 90,
+  down: 180,
+  left: 270,
 };
 
 const CONFETTI = ['🎉', '✨', '🎊', '⭐', '💫', '🎈', '✨', '🎊'];
@@ -16,9 +25,10 @@ interface Props {
   dir: Direction;
   crashed: boolean;
   goaled: boolean;
+  skin?: Skin;
 }
 
-export function Board({ stage, pos, dir, crashed, goaled }: Props) {
+export function Board({ stage, pos, dir, crashed, goaled, skin }: Props) {
   const cols = stage.grid[0]?.length ?? 0;
   // 大きな盤面(最大27列)でも収まるようセルサイズを自動調整する
   const cellSize = Math.max(18, Math.min(48, Math.floor(620 / cols)));
@@ -48,7 +58,20 @@ export function Board({ stage, pos, dir, crashed, goaled }: Props) {
           } as CSSProperties
         }
       >
-        {crashed ? '💥' : goaled ? '🎉' : ARROW[dir]}
+        {crashed ? (
+          '💥'
+        ) : goaled ? (
+          '🎉'
+        ) : skin?.emoji ? (
+          <span
+            className="player-skin"
+            style={{ transform: `rotate(${ROTATION[dir]}deg)` } as CSSProperties}
+          >
+            {skin.emoji}
+          </span>
+        ) : (
+          ARROW[dir]
+        )}
       </span>
       {goaled && (
         <div className="confetti" aria-hidden="true">

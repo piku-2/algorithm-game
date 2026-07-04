@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Stage } from './game/types';
 import { BUNDLED_STAGES } from './game/stages';
 import { fetchProgress, fetchStages, postProgress } from './game/api';
+import { loadSkinId, saveSkinId, skinById, totalStars } from './game/skins';
 import { TitleScreen } from './components/TitleScreen';
 import { StageSelect, type Progress } from './components/StageSelect';
 import { PlayScreen } from './components/PlayScreen';
@@ -26,6 +27,7 @@ export default function App() {
   const [stages, setStages] = useState<Stage[]>(BUNDLED_STAGES);
   const [apiAvailable, setApiAvailable] = useState(false);
   const [progress, setProgress] = useState<Progress>(loadLocalProgress);
+  const [skinId, setSkinId] = useState<string>(loadSkinId);
 
   // ステージと進捗はバックエンド API から取得し、落ちていれば同梱データにフォールバック
   useEffect(() => {
@@ -71,8 +73,20 @@ export default function App() {
     }
   };
 
+  const handleSelectSkin = (id: string) => {
+    setSkinId(id);
+    saveSkinId(id);
+  };
+
   if (screen.name === 'title') {
-    return <TitleScreen onSelectMode={(mode) => setScreen({ name: 'select', mode })} />;
+    return (
+      <TitleScreen
+        onSelectMode={(mode) => setScreen({ name: 'select', mode })}
+        currentSkinId={skinId}
+        totalStars={totalStars(progress)}
+        onSelectSkin={handleSelectSkin}
+      />
+    );
   }
 
   const modeStages = stages.filter((s) => s.mode === screen.mode);
@@ -105,6 +119,7 @@ export default function App() {
       onClear={handleClear}
       onBack={() => setScreen({ name: 'select', mode: screen.mode })}
       onNext={next ? () => setScreen({ name: 'play', mode: screen.mode, stageId: next.id }) : null}
+      skin={skinById(skinId)}
     />
   );
 }

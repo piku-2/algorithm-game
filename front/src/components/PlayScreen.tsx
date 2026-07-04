@@ -4,6 +4,7 @@ import { countBlocks, run, starsFor } from '../game/interpreter';
 import { CODE_TEMPLATE } from '../game/stages';
 import { runC } from '../game/api';
 import { sound } from '../game/sound';
+import type { Skin } from '../game/skins';
 import { Board } from './Board';
 import { ArrayBoard } from './ArrayBoard';
 import { BlockEditor } from './BlockEditor';
@@ -26,6 +27,7 @@ interface Props {
   onClear: (stageId: string, stars: 1 | 2 | 3) => void;
   onBack: () => void;
   onNext: (() => void) | null;
+  skin?: Skin;
 }
 
 /** トレース中の move/turn の数(上級ナビの星評価に使う実行ステップ数) */
@@ -38,7 +40,7 @@ function traceSwaps(trace: TraceEvent[]): number {
   return trace.filter((e) => e.type === 'swap').length;
 }
 
-export function PlayScreen({ stage, onClear, onBack, onNext }: Props) {
+export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
   const initialCode = stage.template ?? CODE_TEMPLATE;
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null);
@@ -197,6 +199,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext }: Props) {
               dir={dir}
               crashed={status === 'crashed'}
               goaled={status === 'goal'}
+              skin={skin}
             />
           )}
           <div className="controls">

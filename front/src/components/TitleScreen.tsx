@@ -1,8 +1,13 @@
+import { SkinPicker } from './SkinPicker';
+
 interface Props {
   onSelectMode: (mode: 'block' | 'code') => void;
+  currentSkinId: string;
+  totalStars: number;
+  onSelectSkin: (id: string) => void;
 }
 
-export function TitleScreen({ onSelectMode }: Props) {
+export function TitleScreen({ onSelectMode, currentSkinId, totalStars, onSelectSkin }: Props) {
   return (
     <div className="title-screen">
       <h1 className="game-title">
@@ -21,6 +26,7 @@ export function TitleScreen({ onSelectMode }: Props) {
           <span className="mode-desc">C言語で 本格プログラミング</span>
         </button>
       </div>
+      <SkinPicker currentSkinId={currentSkinId} totalStars={totalStars} onSelect={onSelectSkin} />
     </div>
   );
 }
