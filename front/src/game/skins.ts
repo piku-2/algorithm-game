@@ -50,6 +50,22 @@ export const SKINS: Skin[] = [
     crashQuips: ['ゴツン! きけん', 'エンジンていし'],
     goalQuips: ['シュ~ッ! はっしゃせいこう!', 'ちきゅうにきかんちゅう'],
   },
+  {
+    id: 'unicorn',
+    emoji: '🦄',
+    name: 'ユニコーン',
+    unlockStars: 200,
+    crashQuips: ['ヒヒーン! いたい', 'つのが かべに...'],
+    goalQuips: ['ヒヒーン! だいせいこう!', 'にじが かかった!'],
+  },
+  {
+    id: 'alien',
+    emoji: '👾',
+    name: 'エイリアン',
+    unlockStars: 250,
+    crashQuips: ['ピロピロ...こうげき うけた', 'ワレワレハ ダメージヲ ウケタ'],
+    goalQuips: ['ワレワレハ クリアシタ!', 'ピコーン! ミッションせいこう'],
+  },
 ];
 
 export function isSkinUnlocked(skin: Skin, totalStars: number): boolean {
