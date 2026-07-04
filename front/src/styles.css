@@ -220,6 +220,7 @@ h1, h2, h3 {
 /* 盤面 */
 
 .board {
+  position: relative;
   display: grid;
   gap: 2px;
   background: #c9d3e8;
@@ -244,12 +245,66 @@ h1, h2, h3 {
 .cell-wall { background: var(--wall); }
 
 .player {
+  position: absolute;
+  left: calc(var(--px) * (var(--cell-size) + 2px));
+  top: calc(var(--py) * (var(--cell-size) + 2px));
+  width: var(--cell-size);
+  height: var(--cell-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--primary);
-  transition: transform 0.1s;
+  font-size: calc(var(--cell-size) * 0.55);
+  transition: left 0.15s ease, top 0.15s ease, transform 0.1s;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .player-crashed, .player-goaled {
   font-size: calc(var(--cell-size) * 0.6);
+}
+
+.player-shake {
+  animation: player-shake 0.3s;
+}
+
+@keyframes player-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-4px, 2px); }
+  40% { transform: translate(4px, -2px); }
+  60% { transform: translate(-3px, -2px); }
+  80% { transform: translate(3px, 2px); }
+}
+
+.confetti {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  font-size: 1.4rem;
+  animation: confetti-burst 0.9s ease-out forwards;
+  animation-delay: calc(var(--n) * 0.04s);
+  transform: rotate(calc(var(--n) * 45deg));
+}
+
+@keyframes confetti-burst {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(calc(var(--n) * 45deg)) scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform:
+      translate(calc((var(--n) - 4) * 22px), calc(-60px + var(--n) * 4px))
+      rotate(calc(var(--n) * 90deg)) scale(1.1);
+  }
 }
 
 .controls {

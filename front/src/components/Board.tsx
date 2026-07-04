@@ -8,6 +8,8 @@ const ARROW: Record<Direction, string> = {
   right: '▶',
 };
 
+const CONFETTI = ['🎉', '✨', '🎊', '⭐', '💫', '🎈', '✨', '🎊'];
+
 interface Props {
   stage: Stage;
   pos: Pos;
@@ -31,21 +33,31 @@ export function Board({ stage, pos, dir, crashed, goaled }: Props) {
       }
     >
       {stage.grid.map((row, y) =>
-        row.map((cell, x) => {
-          const here = pos.x === x && pos.y === y;
-          return (
-            <div key={`${x}-${y}`} className={`cell cell-${cell}`}>
-              {cell === 'goal' && !here && <span className="goal-flag">🚩</span>}
-              {here && (
-                <span
-                  className={`player ${crashed ? 'player-crashed' : ''} ${goaled ? 'player-goaled' : ''}`}
-                >
-                  {crashed ? '💥' : goaled ? '🎉' : ARROW[dir]}
-                </span>
-              )}
-            </div>
-          );
-        }),
+        row.map((cell, x) => (
+          <div key={`${x}-${y}`} className={`cell cell-${cell}`}>
+            {cell === 'goal' && <span className="goal-flag">🚩</span>}
+          </div>
+        )),
+      )}
+      <span
+        className={`player ${crashed ? 'player-crashed player-shake' : ''} ${goaled ? 'player-goaled' : ''}`}
+        style={
+          {
+            '--px': pos.x,
+            '--py': pos.y,
+          } as CSSProperties
+        }
+      >
+        {crashed ? '💥' : goaled ? '🎉' : ARROW[dir]}
+      </span>
+      {goaled && (
+        <div className="confetti" aria-hidden="true">
+          {CONFETTI.map((c, i) => (
+            <span key={i} className="confetti-piece" style={{ '--n': i } as CSSProperties}>
+              {c}
+            </span>
+          ))}
+        </div>
       )}
     </div>
   );
