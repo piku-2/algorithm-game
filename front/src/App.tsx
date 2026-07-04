@@ -45,6 +45,9 @@ export default function App() {
   const [seenAchievementIds, setSeenAchievementIds] = useState<Set<string>>(loadSeenAchievementIds);
   const [achievementToasts, setAchievementToasts] = useState<Achievement[]>([]);
   const [behaviorFlags, setBehaviorFlags] = useState<BehaviorFlags>(loadBehaviorFlags);
+  // きょうのチャレンジ/ストリークはDate.now()に依存するため、タブを開きっぱなしで
+  // 日付をまたいでも表示が更新されるよう1分ごとに再描画のきっかけを作る
+  const [, forceDateTick] = useState(0);
 
   // ステージと進捗はバックエンド API から取得し、落ちていれば同梱データにフォールバック
   useEffect(() => {
@@ -79,10 +82,19 @@ export default function App() {
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
   }, [progress]);
 
+  useEffect(() => {
+    const id = window.setInterval(() => forceDateTick((t) => t + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const dailyStage = pickDailyStage(stages);
   const dailyStreak = currentStreak();
   const stats = computeStats(stages, progress, dailyStreak, behaviorFlags);
   const unlockedIds = unlockedAchievementIds(stats);
+  // ストリーク系バッジは dailyStreak (日をまたぐと下がりうる)に依存するため、
+  // 一度でも解放したら二度とロック表示に戻らないよう「既読 = 生涯解放済み」の
+  // 記録との和集合をギャラリー表示に使う
+  const displayedAchievementIds = new Set([...unlockedIds, ...seenAchievementIds]);
 
   useEffect(() => {
     const newlyUnlocked = ACHIEVEMENTS.filter(
@@ -143,7 +155,7 @@ export default function App() {
         currentSkinId={skinId}
         totalStars={totalStars(progress)}
         onSelectSkin={handleSelectSkin}
-        unlockedAchievementIds={unlockedIds}
+        unlockedAchievementIds={displayedAchievementIds}
         dailyStage={dailyStage}
         dailyStreak={dailyStreak}
         dailyClearedToday={hasClearedToday()}

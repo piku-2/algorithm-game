@@ -82,7 +82,9 @@ export function Board({
         <div className="footprints" aria-hidden="true">
           {trail.slice(-40).map((p, i, arr) => (
             <span
-              key={i}
+              // ウィンドウがスライドしても同じ歩数のあしあとが同じkeyを保つように、
+              // 切り出し後のindexではなくtrail全体でのindexをkeyにする
+              key={trail.length - arr.length + i}
               className="footprint"
               style={
                 {
