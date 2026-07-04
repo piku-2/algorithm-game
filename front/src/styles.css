@@ -450,6 +450,20 @@ h1, h2, h3 {
 .block-repeat, .block-repeatForever { background: var(--block-repeat); }
 .block-ifWall { background: #3cae72; }
 
+.block-active {
+  box-shadow: 0 0 0 3px #fff, 0 0 12px 3px #ffd54a;
+  animation: block-active-pulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes block-active-pulse {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.25); }
+}
+
+.block-active-ancestor {
+  box-shadow: 0 0 0 2px #ffd54a;
+}
+
 .block-row {
   display: flex;
   align-items: center;

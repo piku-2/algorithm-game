@@ -68,4 +68,6 @@ export type TraceEvent =
 export interface RunResult {
   trace: TraceEvent[];
   cleared: boolean;
+  /** trace と同じ長さ。各イベントを発生させたブロックの id(BlockEditor のハイライト用) */
+  blockIds: (string | null)[];
 }

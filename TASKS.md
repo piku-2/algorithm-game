@@ -75,7 +75,12 @@ Fable 5 リードのブレストで出た案（fun ÷ cost 順）。実装しな
       ★10〜150で解放)。SkinPickerをタイトル画面に設置、選択状態はlocalStorage永続化。
       Board.tsxはプレイヤーを絵文字にすると向きに応じてCSS回転。Playwrightで解放前後の
       表示・選択・盤面反映を実ブラウザで確認、vitest 355件も全パス）
-- [ ] 実行中ブロックのハイライト表示（BlockEditor で今動いているブロックが光る）
+- [x] 実行中ブロックのハイライト表示（BlockEditor で今動いているブロックが光る）
+      （interpreter.ts の run() が trace と並行して blockIds(各イベントを起こした
+      ブロックid)を RunResult に追加。PlayScreen が再生ステップごとに activeBlockId
+      を更新しBlockEditorへ渡す。該当ブロックは黄色グロー+パルスアニメ、祖先の
+      repeat/ifWallも薄く縁取り表示。Playwrightで1問目→2問目へハイライトが
+      正しく移動することを確認、vitest 355件も全パス）
 - [ ] キャラのふきだしリアクション（ぶつかった/ゴールでひとことセリフ、ランダム）
 - [ ] ステップ実行ボタン（1コマずつ進める）
 - [ ] 編集中のブロック数と★ボーダーのライブ表示

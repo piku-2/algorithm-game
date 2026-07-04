@@ -54,6 +54,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
   const [speed, setSpeed] = useState(300); // ms / step
   const [stars, setStars] = useState<1 | 2 | 3 | null>(null);
   const [lastScore, setLastScore] = useState(0); // クリア時のステップ/交換回数
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const [sfxOn, setSfxOn] = useState(sound.sfxEnabled);
   const [bgmOn, setBgmOn] = useState(sound.bgmEnabled);
   const timerRef = useRef<number | null>(null);
@@ -74,6 +75,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     setLastSwap(null);
     setStars(null);
     setCodeError(null);
+    setActiveBlockId(null);
   }, [stage]);
 
   useEffect(() => {
@@ -90,7 +92,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
    * starsOnGoal はゴール(達成)イベント到達時に星数を決めるために呼ぶ。
    */
   const playTrace = useCallback(
-    (trace: TraceEvent[], starsOnGoal: () => 1 | 2 | 3) => {
+    (trace: TraceEvent[], starsOnGoal: () => 1 | 2 | 3, blockIds?: (string | null)[]) => {
       if (trace.length === 0) {
         setStatus('editing');
         return;
@@ -99,6 +101,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
       let i = 0;
       timerRef.current = window.setInterval(() => {
         const ev = trace[i];
+        setActiveBlockId(blockIds?.[i] ?? null);
         switch (ev.type) {
           case 'move':
             setPos(ev.to);
@@ -142,6 +145,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
         i++;
         if (i >= trace.length) {
           stopTimer();
+          setActiveBlockId(null);
           // トレースを最後まで再生してもゴールしていなければ編集に戻す
           setStatus((st) => (st === 'running' ? 'editing' : st));
         }
@@ -153,7 +157,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
   const handleRunBlocks = () => {
     reset();
     const result = run(stage, blocks);
-    playTrace(result.trace, () => starsFor(stage, countBlocks(blocks)));
+    playTrace(result.trace, () => starsFor(stage, countBlocks(blocks)), result.blockIds);
   };
 
   const handleRunCode = async () => {
@@ -257,6 +261,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
               disabled={busy}
               selectedContainerId={selectedContainerId}
               onSelectContainer={setSelectedContainerId}
+              activeBlockId={activeBlockId}
             />
           ) : (
             <CodeEditor code={code} onChange={setCode} disabled={busy} error={codeError} />
