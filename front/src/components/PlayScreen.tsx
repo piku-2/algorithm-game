@@ -66,9 +66,16 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
   const [stars, setStars] = useState<1 | 2 | 3 | null>(null);
   const [lastScore, setLastScore] = useState(0); // クリア時のステップ/交換回数
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  const [stepping, setStepping] = useState(false);
   const [sfxOn, setSfxOn] = useState(sound.sfxEnabled);
   const [bgmOn, setBgmOn] = useState(sound.bgmEnabled);
   const timerRef = useRef<number | null>(null);
+  const stepRef = useRef<{
+    trace: TraceEvent[];
+    blockIds?: (string | null)[];
+    i: number;
+    starsOnGoal: () => 1 | 2 | 3;
+  } | null>(null);
 
   const stopTimer = () => {
     if (timerRef.current !== null) {
@@ -79,6 +86,8 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
 
   const reset = useCallback(() => {
     stopTimer();
+    stepRef.current = null;
+    setStepping(false);
     setStatus('editing');
     setPos({ x: stage.start.x, y: stage.start.y });
     setDir(stage.start.dir);
@@ -98,6 +107,53 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
 
   useEffect(() => stopTimer, []);
 
+  /** 1件のトレースイベントを盤面/状態に反映する(自動再生・ステップ実行の共通処理) */
+  const applyEvent = useCallback(
+    (ev: TraceEvent, starsOnGoal: () => 1 | 2 | 3) => {
+      switch (ev.type) {
+        case 'move':
+          setPos(ev.to);
+          sound.move();
+          break;
+        case 'turn':
+          setDir(ev.dir);
+          sound.turn();
+          break;
+        case 'swap':
+          setValues((vs) => {
+            const next = [...vs];
+            [next[ev.i], next[ev.j]] = [next[ev.j], next[ev.i]];
+            return next;
+          });
+          setLastSwap([ev.i, ev.j]);
+          sound.move();
+          break;
+        case 'crash':
+          setStatus('crashed');
+          sound.crash();
+          break;
+        case 'goal':
+        case 'solved': {
+          setStatus('goal');
+          sound.goal();
+          const s = starsOnGoal();
+          setStars(s);
+          onClear(stage.id, s);
+          break;
+        }
+        case 'unsolved':
+          setStatus('unsolved');
+          sound.crash();
+          break;
+        case 'stepLimit':
+          setStatus('stepLimit');
+          sound.crash();
+          break;
+      }
+    },
+    [stage.id, onClear],
+  );
+
   /**
    * トレースを再生する(初級・上級共通)。
    * starsOnGoal はゴール(達成)イベント到達時に星数を決めるために呼ぶ。
@@ -111,48 +167,8 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
       setStatus('running');
       let i = 0;
       timerRef.current = window.setInterval(() => {
-        const ev = trace[i];
         setActiveBlockId(blockIds?.[i] ?? null);
-        switch (ev.type) {
-          case 'move':
-            setPos(ev.to);
-            sound.move();
-            break;
-          case 'turn':
-            setDir(ev.dir);
-            sound.turn();
-            break;
-          case 'swap':
-            setValues((vs) => {
-              const next = [...vs];
-              [next[ev.i], next[ev.j]] = [next[ev.j], next[ev.i]];
-              return next;
-            });
-            setLastSwap([ev.i, ev.j]);
-            sound.move();
-            break;
-          case 'crash':
-            setStatus('crashed');
-            sound.crash();
-            break;
-          case 'goal':
-          case 'solved': {
-            setStatus('goal');
-            sound.goal();
-            const s = starsOnGoal();
-            setStars(s);
-            onClear(stage.id, s);
-            break;
-          }
-          case 'unsolved':
-            setStatus('unsolved');
-            sound.crash();
-            break;
-          case 'stepLimit':
-            setStatus('stepLimit');
-            sound.crash();
-            break;
-        }
+        applyEvent(trace[i], starsOnGoal);
         i++;
         if (i >= trace.length) {
           stopTimer();
@@ -162,34 +178,82 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
         }
       }, speed);
     },
-    [speed, stage.id, onClear],
+    [speed, applyEvent],
   );
 
-  const handleRunBlocks = () => {
-    reset();
+  const computeBlocksTrace = () => {
     const result = run(stage, blocks);
-    playTrace(result.trace, () => starsFor(stage, countBlocks(blocks)), result.blockIds);
+    return {
+      trace: result.trace,
+      blockIds: result.blockIds,
+      starsOnGoal: () => starsFor(stage, countBlocks(blocks)),
+    };
   };
 
-  const handleRunCode = async () => {
-    reset();
+  const computeCodeTrace = async () => {
     setStatus('compiling');
     const result = await runC(stage.id, code);
     if (!result.ok || !result.trace) {
       setStatus('editing');
       setCodeError(result.error ?? 'じっこうに しっぱいしました');
-      return;
+      return null;
     }
     setCodeError(null);
     const trace = result.trace;
-    playTrace(trace, () => {
-      const score = stage.puzzle ? traceSwaps(trace) : traceSteps(trace);
-      setLastScore(score);
-      return starsFor(stage, score);
-    });
+    return {
+      trace,
+      blockIds: undefined as (string | null)[] | undefined,
+      starsOnGoal: () => {
+        const score = stage.puzzle ? traceSwaps(trace) : traceSteps(trace);
+        setLastScore(score);
+        return starsFor(stage, score);
+      },
+    };
+  };
+
+  const handleRunBlocks = () => {
+    reset();
+    const { trace, blockIds, starsOnGoal } = computeBlocksTrace();
+    playTrace(trace, starsOnGoal, blockIds);
+  };
+
+  const handleRunCode = async () => {
+    reset();
+    const result = await computeCodeTrace();
+    if (result) playTrace(result.trace, result.starsOnGoal, result.blockIds);
+  };
+
+  /** ステップ実行: 1クリックで1トレースイベントだけ進める */
+  const handleStep = async () => {
+    if (!stepRef.current) {
+      reset();
+      const prepared = stage.mode === 'block' ? computeBlocksTrace() : await computeCodeTrace();
+      if (!prepared || prepared.trace.length === 0) {
+        setStatus('editing');
+        return;
+      }
+      stepRef.current = { ...prepared, i: 0 };
+      setStepping(true);
+      setStatus('running');
+    }
+    const s = stepRef.current;
+    if (!s || s.i >= s.trace.length) return;
+    setActiveBlockId(s.blockIds?.[s.i] ?? null);
+    applyEvent(s.trace[s.i], s.starsOnGoal);
+    s.i++;
+    if (s.i >= s.trace.length) {
+      stepRef.current = null;
+      setStepping(false);
+      setActiveBlockId(null);
+      setStatus((st) => (st === 'running' ? 'editing' : st));
+    }
   };
 
   const busy = status === 'running' || status === 'compiling';
+  const stepDisabled =
+    status === 'compiling' ||
+    (!stepping && status === 'running') ||
+    (!stepping && stage.mode === 'block' && blocks.length === 0);
 
   return (
     <div className="play-screen">
@@ -231,6 +295,9 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
                 ▶ 実行
               </button>
             )}
+            <button onClick={handleStep} disabled={stepDisabled} title="1コマだけ すすめる">
+              {stepping ? '⏭ つぎへ' : '⏭ ステップ'}
+            </button>
             <button onClick={reset}>⟲ りせっと</button>
             <label className="speed">
               はやさ
