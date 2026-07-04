@@ -6,15 +6,18 @@ import { loadSkinId, saveSkinId, skinById, totalStars } from './game/skins';
 import {
   ACHIEVEMENTS,
   computeStats,
+  loadBehaviorFlags,
   loadSeenAchievementIds,
+  saveBehaviorFlags,
   saveSeenAchievementIds,
   unlockedAchievementIds,
   type Achievement,
+  type BehaviorFlags,
 } from './game/achievements';
 import { currentStreak, hasClearedToday, pickDailyStage, recordDailyClear } from './game/dailyChallenge';
 import { TitleScreen } from './components/TitleScreen';
 import { StageSelect, type Progress } from './components/StageSelect';
-import { PlayScreen } from './components/PlayScreen';
+import { PlayScreen, type ClearMeta } from './components/PlayScreen';
 import { AchievementToast } from './components/AchievementToast';
 
 type Screen =
@@ -40,6 +43,7 @@ export default function App() {
   const [skinId, setSkinId] = useState<string>(loadSkinId);
   const [seenAchievementIds, setSeenAchievementIds] = useState<Set<string>>(loadSeenAchievementIds);
   const [achievementToasts, setAchievementToasts] = useState<Achievement[]>([]);
+  const [behaviorFlags, setBehaviorFlags] = useState<BehaviorFlags>(loadBehaviorFlags);
 
   // ステージと進捗はバックエンド API から取得し、落ちていれば同梱データにフォールバック
   useEffect(() => {
@@ -76,7 +80,7 @@ export default function App() {
 
   const dailyStage = pickDailyStage(stages);
   const dailyStreak = currentStreak();
-  const stats = computeStats(stages, progress, dailyStreak);
+  const stats = computeStats(stages, progress, dailyStreak, behaviorFlags);
   const unlockedIds = unlockedAchievementIds(stats);
 
   useEffect(() => {
@@ -91,9 +95,9 @@ export default function App() {
       saveSeenAchievementIds(next);
       return next;
     });
-  }, [progress, stages]);
+  }, [progress, stages, behaviorFlags]);
 
-  const handleClear = (stageId: string, stars: 1 | 2 | 3) => {
+  const handleClear = (stageId: string, stars: 1 | 2 | 3, meta: ClearMeta) => {
     setProgress((prev) => {
       const best = prev[stageId];
       if (best && best >= stars) return prev;
@@ -104,6 +108,18 @@ export default function App() {
     }
     if (dailyStage && stageId === dailyStage.id) {
       recordDailyClear();
+    }
+    if (meta.firstTry || meta.noCrash) {
+      setBehaviorFlags((prev) => {
+        const next: BehaviorFlags = {
+          firstTryClear: prev.firstTryClear || meta.firstTry,
+          noCrashClear: prev.noCrashClear || meta.noCrash,
+        };
+        if (next.firstTryClear !== prev.firstTryClear || next.noCrashClear !== prev.noCrashClear) {
+          saveBehaviorFlags(next);
+        }
+        return next;
+      });
     }
   };
 

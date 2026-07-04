@@ -146,7 +146,12 @@ fun÷cost順に提案。この順で実装する。
       streak-3/streak-7バッジを判定。DailyChallengeCardはstreak>=3で
       オレンジの縁取り+太字強調。Playwrightでトースト・カード強調・
       ギャラリー反映を確認、vitest 355件も全パス）
-- [ ] こうどうバッジ（ノーミスクリア・いちはつクリア等、PlayScreenに小さいカウンタ追加）
+- [x] こうどうバッジ（ノーミスクリア・いちはつクリア等、PlayScreenに小さいカウンタ追加）
+      （PlayScreenにrunCountRef/crashCountRefを追加(ステージ滞在中は累積、reset()では
+      減らない)。ゴール時にfirstTry/noCrashのメタ情報をonClearへ渡すようシグネチャ拡張。
+      App.tsxはこれをlocalStorageに永続化するBehaviorFlagsとして保持し、
+      achievements.tsのAchievementStatsに合流。Playwrightで両バッジの解放を確認、
+      vitest 355件も全パス）
 - [ ] ワールド制覇の見える化（ワールドごとの進捗バー、20問全クリアで王冠）
 - [ ] あしあと表示（プレイ中に通過マスへフェードするあしあとを重ねる）
 - [ ] スキン2種追加（★200/250でユニコーン・エイリアンなど解放）

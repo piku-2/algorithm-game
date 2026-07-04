@@ -16,6 +16,8 @@ export interface AchievementStats {
   totalCodeCount: number;
   totalCount: number;
   dailyStreak: number;
+  firstTryClear: boolean;
+  noCrashClear: boolean;
 }
 
 export const ACHIEVEMENTS: Achievement[] = [
@@ -70,12 +72,30 @@ export const ACHIEVEMENTS: Achievement[] = [
     desc: 'きょうのチャレンジを7日れんぞくでクリアした',
     emoji: '🔥',
   },
+  {
+    id: 'first-try-clear',
+    name: 'いちはつクリア',
+    desc: 'やりなおしなしで1かいめの じっこうで クリアした',
+    emoji: '🎯',
+  },
+  {
+    id: 'no-crash-clear',
+    name: 'ノーミスクリア',
+    desc: 'いちども かべに ぶつからずに クリアした',
+    emoji: '🛡️',
+  },
 ];
+
+export interface BehaviorFlags {
+  firstTryClear: boolean;
+  noCrashClear: boolean;
+}
 
 export function computeStats(
   stages: Stage[],
   progress: Record<string, 1 | 2 | 3>,
   dailyStreak = 0,
+  behaviorFlags: BehaviorFlags = { firstTryClear: false, noCrashClear: false },
 ): AchievementStats {
   let clearedCount = 0;
   let star3Count = 0;
@@ -104,6 +124,8 @@ export function computeStats(
     totalCodeCount,
     totalCount: stages.length,
     dailyStreak,
+    firstTryClear: behaviorFlags.firstTryClear,
+    noCrashClear: behaviorFlags.noCrashClear,
   };
 }
 
@@ -119,6 +141,8 @@ const PREDICATES: Record<string, (s: AchievementStats) => boolean> = {
   perfect: (s) => s.totalCount > 0 && s.star3Count >= s.totalCount,
   'streak-3': (s) => s.dailyStreak >= 3,
   'streak-7': (s) => s.dailyStreak >= 7,
+  'first-try-clear': (s) => s.firstTryClear,
+  'no-crash-clear': (s) => s.noCrashClear,
 };
 
 export function unlockedAchievementIds(stats: AchievementStats): Set<string> {
@@ -141,4 +165,22 @@ export function loadSeenAchievementIds(): Set<string> {
 
 export function saveSeenAchievementIds(ids: Set<string>): void {
   localStorage.setItem(SEEN_KEY, JSON.stringify([...ids]));
+}
+
+const BEHAVIOR_KEY = 'algorithm-game-behavior-flags';
+
+export function loadBehaviorFlags(): BehaviorFlags {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(BEHAVIOR_KEY) ?? 'null');
+    return {
+      firstTryClear: Boolean(parsed?.firstTryClear),
+      noCrashClear: Boolean(parsed?.noCrashClear),
+    };
+  } catch {
+    return { firstTryClear: false, noCrashClear: false };
+  }
+}
+
+export function saveBehaviorFlags(flags: BehaviorFlags): void {
+  localStorage.setItem(BEHAVIOR_KEY, JSON.stringify(flags));
 }

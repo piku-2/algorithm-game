@@ -22,9 +22,16 @@ const STATUS_MESSAGE: Record<Status, string> = {
   unsolved: 'プログラムが おわったけど、まだ 条件を みたしていないよ',
 };
 
+export interface ClearMeta {
+  /** このステージに来てから最初の実行/ステップで(やり直しなしで)クリアした */
+  firstTry: boolean;
+  /** このステージに来てから一度もかべにぶつからずクリアした */
+  noCrash: boolean;
+}
+
 interface Props {
   stage: Stage;
-  onClear: (stageId: string, stars: 1 | 2 | 3) => void;
+  onClear: (stageId: string, stars: 1 | 2 | 3, meta: ClearMeta) => void;
   onBack: () => void;
   onNext: (() => void) | null;
   skin?: Skin;
@@ -79,6 +86,9 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     starsOnGoal: () => 1 | 2 | 3;
   } | null>(null);
   const stepStartingRef = useRef(false);
+  // このステージに来てからの実行回数・クラッシュ回数(こうどうバッジ判定用。reset()では減らさない)
+  const runCountRef = useRef(0);
+  const crashCountRef = useRef(0);
 
   const stopTimer = () => {
     if (timerRef.current !== null) {
@@ -125,6 +135,8 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     setBlocks([]);
     setSelectedContainerId(null);
     setCode(stage.template ?? CODE_TEMPLATE);
+    runCountRef.current = 0;
+    crashCountRef.current = 0;
   }, [stage, reset]);
 
   useEffect(() => stopTimer, []);
@@ -151,6 +163,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
           sound.move();
           break;
         case 'crash':
+          crashCountRef.current++;
           setStatus('crashed');
           sound.crash();
           break;
@@ -160,7 +173,10 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
           sound.goal();
           const s = starsOnGoal();
           setStars(s);
-          onClear(stage.id, s);
+          onClear(stage.id, s, {
+            firstTry: runCountRef.current === 1,
+            noCrash: crashCountRef.current === 0,
+          });
           // 紙吹雪・ふきだしの演出を見せてからクリアダイアログを出す
           clearTimeoutsRef.current.push(
             window.setTimeout(() => setShowClearDialog(true), 700),
@@ -239,12 +255,14 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
 
   const handleRunBlocks = () => {
     reset();
+    runCountRef.current++;
     const { trace, blockIds, starsOnGoal } = computeBlocksTrace();
     playTrace(trace, starsOnGoal, blockIds);
   };
 
   const handleRunCode = async () => {
     reset();
+    runCountRef.current++;
     const result = await computeCodeTrace();
     if (result) playTrace(result.trace, result.starsOnGoal, result.blockIds);
   };
@@ -257,6 +275,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
       stepStartingRef.current = true;
       try {
         reset();
+        runCountRef.current++;
         const prepared = stage.mode === 'block' ? computeBlocksTrace() : await computeCodeTrace();
         if (!prepared || prepared.trace.length === 0) {
           setStatus('editing');
