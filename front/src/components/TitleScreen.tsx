@@ -1,13 +1,21 @@
 import { SkinPicker } from './SkinPicker';
+import { AchievementGallery } from './AchievementGallery';
 
 interface Props {
   onSelectMode: (mode: 'block' | 'code') => void;
   currentSkinId: string;
   totalStars: number;
   onSelectSkin: (id: string) => void;
+  unlockedAchievementIds: Set<string>;
 }
 
-export function TitleScreen({ onSelectMode, currentSkinId, totalStars, onSelectSkin }: Props) {
+export function TitleScreen({
+  onSelectMode,
+  currentSkinId,
+  totalStars,
+  onSelectSkin,
+  unlockedAchievementIds,
+}: Props) {
   return (
     <div className="title-screen">
       <h1 className="game-title">
@@ -27,6 +35,7 @@ export function TitleScreen({ onSelectMode, currentSkinId, totalStars, onSelectS
         </button>
       </div>
       <SkinPicker currentSkinId={currentSkinId} totalStars={totalStars} onSelect={onSelectSkin} />
+      <AchievementGallery unlockedIds={unlockedAchievementIds} />
     </div>
   );
 }

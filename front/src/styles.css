@@ -171,6 +171,91 @@ h1, h2, h3 {
   font-size: 1.6rem;
 }
 
+/* ---------- じっせき(バッジ) ---------- */
+
+.achievement-gallery {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.achievement-gallery-label {
+  font-size: 0.9rem;
+  color: #6b7488;
+}
+
+.achievement-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 560px;
+}
+
+.achievement-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 72px;
+  padding: 8px 4px;
+  background: var(--panel);
+  border-radius: 12px;
+  font-size: 0.7rem;
+}
+
+.achievement-locked {
+  opacity: 0.5;
+}
+
+.achievement-emoji {
+  font-size: 1.5rem;
+}
+
+.achievement-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border: 2px solid var(--star);
+  border-radius: 14px;
+  padding: 10px 20px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+  z-index: 20;
+  animation: achievement-toast-in 0.3s ease-out;
+}
+
+.achievement-toast-emoji {
+  font-size: 2rem;
+}
+
+.achievement-toast-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.achievement-toast-label {
+  font-size: 0.75rem;
+  color: #6b7488;
+}
+
+.achievement-toast-name {
+  font-weight: bold;
+  font-size: 1.05rem;
+  color: var(--primary);
+}
+
+@keyframes achievement-toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-16px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* ---------- ステージ選択 ---------- */
 
 .stage-select {
