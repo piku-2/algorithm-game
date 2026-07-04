@@ -122,6 +122,8 @@ interface Props {
   /** コンテナ内にクリック追加するとき対象のコンテナブロック id。null ならトップレベル */
   selectedContainerId: string | null;
   onSelectContainer: (id: string | null) => void;
+  /** 実行中に今うごいているブロックの id(あれば光らせる) */
+  activeBlockId?: string | null;
 }
 
 export function BlockEditor({
@@ -131,6 +133,7 @@ export function BlockEditor({
   disabled,
   selectedContainerId,
   onSelectContainer,
+  activeBlockId = null,
 }: Props) {
   const addBlock = (kind: BlockType) => {
     onChange(insertBlock(blocks, selectedContainerId, null, newBlock(kind)));
@@ -189,6 +192,7 @@ export function BlockEditor({
           onSelectContainer={onSelectContainer}
           drop={drop}
           allowDrop={allowDrop}
+          activeBlockId={activeBlockId}
         />
       </div>
     </div>
@@ -206,6 +210,7 @@ interface ListProps {
   allowDrop: (e: DragEvent) => void;
   /** このリストの親コンテナ id(ルートは null) */
   parentId?: string | null;
+  activeBlockId?: string | null;
 }
 
 function BlockList({
@@ -218,13 +223,17 @@ function BlockList({
   drop,
   allowDrop,
   parentId = null,
+  activeBlockId = null,
 }: ListProps) {
   return (
     <div className="block-list">
-      {list.map((block, i) => (
+      {list.map((block, i) => {
+        const isActive = block.id === activeBlockId;
+        const hasActiveChild = activeBlockId !== null && !isActive && containsId(block, activeBlockId);
+        return (
         <div
           key={block.id}
-          className={`block block-${block.kind}`}
+          className={`block block-${block.kind} ${isActive ? 'block-active' : ''} ${hasActiveChild ? 'block-active-ancestor' : ''}`}
           draggable={!disabled}
           onDragStart={(e) => {
             e.stopPropagation();
@@ -296,6 +305,7 @@ function BlockList({
                 drop={drop}
                 allowDrop={allowDrop}
                 parentId={block.id}
+                activeBlockId={activeBlockId}
               />
               <button
                 className={`repeat-target ${selectedContainerId === block.id ? 'repeat-target-active' : ''}`}
@@ -307,7 +317,8 @@ function BlockList({
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

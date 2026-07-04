@@ -14,6 +14,8 @@ pub enum TraceEvent {
     Swap { i: i32, j: i32 },
     Solved {},
     Unsolved {},
+    // 注意: types.ts には "gem"(集める要素)がこの他に存在するが、しょきゅう
+    // ブロックインタプリタのみが発行しCサンドボックスは発行しないためここには無い。
 }
 
 #[derive(Serialize, Debug, PartialEq)]
