@@ -15,6 +15,7 @@ export interface AchievementStats {
   clearedCodeCount: number;
   totalCodeCount: number;
   totalCount: number;
+  dailyStreak: number;
 }
 
 export const ACHIEVEMENTS: Achievement[] = [
@@ -57,11 +58,24 @@ export const ACHIEVEMENTS: Achievement[] = [
     desc: 'すべてのステージを ★3で クリアした',
     emoji: '🏆',
   },
+  {
+    id: 'streak-3',
+    name: '3日れんぞく',
+    desc: 'きょうのチャレンジを3日れんぞくでクリアした',
+    emoji: '🔥',
+  },
+  {
+    id: 'streak-7',
+    name: '7日れんぞく',
+    desc: 'きょうのチャレンジを7日れんぞくでクリアした',
+    emoji: '🔥',
+  },
 ];
 
 export function computeStats(
   stages: Stage[],
   progress: Record<string, 1 | 2 | 3>,
+  dailyStreak = 0,
 ): AchievementStats {
   let clearedCount = 0;
   let star3Count = 0;
@@ -89,6 +103,7 @@ export function computeStats(
     clearedCodeCount,
     totalCodeCount,
     totalCount: stages.length,
+    dailyStreak,
   };
 }
 
@@ -102,6 +117,8 @@ const PREDICATES: Record<string, (s: AchievementStats) => boolean> = {
   'all-block-clear': (s) => s.totalBlockCount > 0 && s.clearedBlockCount >= s.totalBlockCount,
   'all-code-clear': (s) => s.totalCodeCount > 0 && s.clearedCodeCount >= s.totalCodeCount,
   perfect: (s) => s.totalCount > 0 && s.star3Count >= s.totalCount,
+  'streak-3': (s) => s.dailyStreak >= 3,
+  'streak-7': (s) => s.dailyStreak >= 7,
 };
 
 export function unlockedAchievementIds(stats: AchievementStats): Set<string> {

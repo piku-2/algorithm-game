@@ -160,6 +160,16 @@ h1, h2, h3 {
   color: #6b7488;
 }
 
+.daily-card-on-fire {
+  border-color: #ff8a3d;
+  box-shadow: 0 3px 14px rgb(255 138 61 / 0.35);
+}
+
+.daily-streak-on-fire {
+  color: #e0662a;
+  font-weight: bold;
+}
+
 /* ---------- きせかえ ---------- */
 
 .skin-picker {

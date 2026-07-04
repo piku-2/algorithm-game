@@ -74,9 +74,10 @@ export default function App() {
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
   }, [progress]);
 
-  const stats = computeStats(stages, progress);
-  const unlockedIds = unlockedAchievementIds(stats);
   const dailyStage = pickDailyStage(stages);
+  const dailyStreak = currentStreak();
+  const stats = computeStats(stages, progress, dailyStreak);
+  const unlockedIds = unlockedAchievementIds(stats);
 
   useEffect(() => {
     const newlyUnlocked = ACHIEVEMENTS.filter(
@@ -127,7 +128,7 @@ export default function App() {
         onSelectSkin={handleSelectSkin}
         unlockedAchievementIds={unlockedIds}
         dailyStage={dailyStage}
-        dailyStreak={currentStreak()}
+        dailyStreak={dailyStreak}
         dailyClearedToday={hasClearedToday()}
         onStartDaily={handleStartDaily}
       />
