@@ -11,6 +11,7 @@ import {
   unlockedAchievementIds,
   type Achievement,
 } from './game/achievements';
+import { currentStreak, hasClearedToday, pickDailyStage, recordDailyClear } from './game/dailyChallenge';
 import { TitleScreen } from './components/TitleScreen';
 import { StageSelect, type Progress } from './components/StageSelect';
 import { PlayScreen } from './components/PlayScreen';
@@ -19,7 +20,7 @@ import { AchievementToast } from './components/AchievementToast';
 type Screen =
   | { name: 'title' }
   | { name: 'select'; mode: 'block' | 'code' }
-  | { name: 'play'; mode: 'block' | 'code'; stageId: string };
+  | { name: 'play'; mode: 'block' | 'code'; stageId: string; from?: 'daily' };
 
 const PROGRESS_KEY = 'algorithm-game-progress';
 
@@ -75,6 +76,7 @@ export default function App() {
 
   const stats = computeStats(stages, progress);
   const unlockedIds = unlockedAchievementIds(stats);
+  const dailyStage = pickDailyStage(stages);
 
   useEffect(() => {
     const newlyUnlocked = ACHIEVEMENTS.filter(
@@ -99,11 +101,19 @@ export default function App() {
     if (apiAvailable) {
       void postProgress(stageId, stars).catch(() => {});
     }
+    if (dailyStage && stageId === dailyStage.id) {
+      recordDailyClear();
+    }
   };
 
   const handleSelectSkin = (id: string) => {
     setSkinId(id);
     saveSkinId(id);
+  };
+
+  const handleStartDaily = () => {
+    if (!dailyStage) return;
+    setScreen({ name: 'play', mode: dailyStage.mode, stageId: dailyStage.id, from: 'daily' });
   };
 
   let content: ReactNode;
@@ -116,6 +126,10 @@ export default function App() {
         totalStars={totalStars(progress)}
         onSelectSkin={handleSelectSkin}
         unlockedAchievementIds={unlockedIds}
+        dailyStage={dailyStage}
+        dailyStreak={currentStreak()}
+        dailyClearedToday={hasClearedToday()}
+        onStartDaily={handleStartDaily}
       />
     );
   } else {
@@ -140,12 +154,15 @@ export default function App() {
         setScreen({ name: 'select', mode: screen.mode });
         content = null;
       } else {
+        const fromDaily = screen.from === 'daily';
         content = (
           <PlayScreen
             key={stage.id}
             stage={stage}
             onClear={handleClear}
-            onBack={() => setScreen({ name: 'select', mode: screen.mode })}
+            onBack={() =>
+              setScreen(fromDaily ? { name: 'title' } : { name: 'select', mode: screen.mode })
+            }
             onNext={
               next ? () => setScreen({ name: 'play', mode: screen.mode, stageId: next.id }) : null
             }

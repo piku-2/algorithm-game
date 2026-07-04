@@ -116,6 +116,50 @@ h1, h2, h3 {
   color: #6b7488;
 }
 
+/* ---------- きょうのチャレンジ ---------- */
+
+.daily-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, #fff4d6, #ffe9c9);
+  border: 2px solid var(--star);
+  border-radius: 16px;
+  box-shadow: 0 3px 10px rgb(43 50 69 / 0.1);
+  text-align: left;
+}
+
+.daily-card:hover {
+  transform: translateY(-2px);
+}
+
+.daily-emoji {
+  font-size: 2.2rem;
+}
+
+.daily-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.daily-title {
+  font-weight: bold;
+  color: #8a6d1f;
+  font-size: 0.85rem;
+}
+
+.daily-stage-name {
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+.daily-streak {
+  font-size: 0.85rem;
+  color: #6b7488;
+}
+
 /* ---------- きせかえ ---------- */
 
 .skin-picker {
