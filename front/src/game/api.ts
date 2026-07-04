@@ -31,12 +31,23 @@ export async function postProgress(stageId: string, stars: 1 | 2 | 3): Promise<v
   });
 }
 
+/** IO問題(標準入出力問題)の1ケース分の実行結果 */
+export interface IoCaseResult {
+  name: string;
+  pass: boolean;
+  input: string;
+  expected: string;
+  actual: string;
+}
+
 export interface RunCResult {
   ok: boolean;
   /** コンパイルエラー・実行時エラーの整形済みメッセージ */
   error?: string;
   trace?: TraceEvent[];
   cleared?: boolean;
+  /** io ステージのみ。trace の代わりにケースごとの判定結果を返す */
+  ioCases?: IoCaseResult[];
 }
 
 export async function runC(stageId: string, code: string): Promise<RunCResult> {

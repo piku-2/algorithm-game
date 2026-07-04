@@ -45,6 +45,9 @@ export default function App() {
   const [seenAchievementIds, setSeenAchievementIds] = useState<Set<string>>(loadSeenAchievementIds);
   const [achievementToasts, setAchievementToasts] = useState<Achievement[]>([]);
   const [behaviorFlags, setBehaviorFlags] = useState<BehaviorFlags>(loadBehaviorFlags);
+  // 各モードで最後にプレイしていたステージ id(ステージ選択に戻ったときに
+  // そのステージのページを開いた状態で表示するために使う)
+  const [lastStageId, setLastStageId] = useState<Partial<Record<'block' | 'code', string>>>({});
   // きょうのチャレンジ/ストリークはDate.now()に依存するため、タブを開きっぱなしで
   // 日付をまたいでも表示が更新されるよう1分ごとに再描画のきっかけを作る
   const [, forceDateTick] = useState(0);
@@ -171,7 +174,11 @@ export default function App() {
           mode={screen.mode}
           stages={modeStages}
           progress={progress}
-          onSelect={(stageId) => setScreen({ name: 'play', mode: screen.mode, stageId })}
+          lastStageId={lastStageId[screen.mode]}
+          onSelect={(stageId) => {
+            setLastStageId((prev) => ({ ...prev, [screen.mode]: stageId }));
+            setScreen({ name: 'play', mode: screen.mode, stageId });
+          }}
           onBack={() => setScreen({ name: 'title' })}
         />
       );
@@ -194,7 +201,12 @@ export default function App() {
               setScreen(fromDaily ? { name: 'title' } : { name: 'select', mode: screen.mode })
             }
             onNext={
-              next ? () => setScreen({ name: 'play', mode: screen.mode, stageId: next.id }) : null
+              next
+                ? () => {
+                    setLastStageId((prev) => ({ ...prev, [screen.mode]: next.id }));
+                    setScreen({ name: 'play', mode: screen.mode, stageId: next.id });
+                  }
+                : null
             }
             skin={skinById(skinId)}
           />

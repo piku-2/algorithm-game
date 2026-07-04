@@ -24,6 +24,18 @@ export function newBlock(kind: BlockType): Block {
   return { id: `blk${seq}`, kind };
 }
 
+/**
+ * ブロック列を、ワークスペースの既存ブロックと衝突しない新しい id を振りなおして
+ * 複製する(解答例をワークスペースに読み込むときなどに使う)。
+ */
+export function cloneWithFreshIds(blocks: Block[]): Block[] {
+  return blocks.map((b) => {
+    seq++;
+    const id = `blk${seq}`;
+    return b.body ? { ...b, id, body: cloneWithFreshIds(b.body) } : { ...b, id };
+  });
+}
+
 /** id のブロックを fn で差し替えた新しいツリーを返す */
 function mapBlocks(blocks: Block[], id: string, fn: (b: Block) => Block): Block[] {
   return blocks.map((b) => {

@@ -1,5 +1,12 @@
-import type { BlockType, Cell, Direction, Puzzle, Stage } from './types';
+import type { Block, BlockType, Cell, Direction, IoProblem, Puzzle, Stage } from './types';
 import bundled from './stages.data.json';
+
+/** データファイル上の模範解答ブロック(id なし。ネストは body で表現) */
+export interface RawSolutionBlock {
+  kind: BlockType;
+  times?: number;
+  body?: RawSolutionBlock[];
+}
 
 /** バックエンド/生成データの転送フォーマット(rows は '#'=壁 '.'=床 'G'=ゴール) */
 export interface StageJson {
@@ -14,6 +21,23 @@ export interface StageJson {
   hint?: string;
   puzzle?: Puzzle;
   template?: string;
+  statement?: string;
+  io?: IoProblem;
+  solution?: string;
+  solutionBlocks?: RawSolutionBlock[];
+}
+
+let solutionBlockSeq = 0;
+
+/** id なしの模範解答ブロック列に、再帰的に一意な id を振る */
+function assignSolutionBlockIds(raw: RawSolutionBlock[]): Block[] {
+  return raw.map((b) => {
+    solutionBlockSeq++;
+    const id = `sol${solutionBlockSeq}`;
+    return b.body
+      ? { id, kind: b.kind, times: b.times, body: assignSolutionBlockIds(b.body) }
+      : { id, kind: b.kind, times: b.times };
+  });
 }
 
 export function toStage(j: StageJson): Stage {
@@ -31,6 +55,10 @@ export function toStage(j: StageJson): Stage {
     hint: j.hint,
     puzzle: j.puzzle,
     template: j.template,
+    statement: j.statement,
+    io: j.io,
+    solution: j.solution,
+    solutionBlocks: j.solutionBlocks ? assignSolutionBlockIds(j.solutionBlocks) : undefined,
   };
 }
 
@@ -48,20 +76,10 @@ export const CODE_TEMPLATE = `#include "game.h"
 //   turn_right();      // みぎをむく
 //   is_wall_ahead();   // まえがかべなら1
 //   is_goal();         // ゴールなら1
-//
-// ↓のコードは「かべなら右をむく」だけの単純な作戦。
-// まっすぐな道はクリアできるが、迷路では同じ場所を
-// 行ったり来たりしてしまう。「右手法」(右手を壁に
-// つけたまま歩く) などのアルゴリズムに改造してみよう!
 
 int main(void) {
-    while (!is_goal()) {
-        if (is_wall_ahead()) {
-            turn_right();
-        } else {
-            move_forward();
-        }
-    }
+    // ここに プログラムを かこう
+
     return 0;
 }
 `;

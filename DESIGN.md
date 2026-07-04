@@ -45,6 +45,19 @@ interface Block { id: string; kind: BlockType; times?: number; body?: Block[] }
 interface Puzzle { kind: 'sort'|'sortDesc'|'reverse'|'maxLast'|'minFirst'; values: number[] }
 // Stage には puzzle?: Puzzle と template?: string(問題別コード雛形)がある
 
+// 上級の標準入出力問題(paiza/AtCoder 風)。Stage には io?: IoProblem がある。
+// io を持つステージは盤面(rows)・トレース再生を使わず、stdin/stdout の判定で解く。
+interface IoProblem {
+  inputFormat: string;   // 入力形式の説明
+  outputFormat: string;  // 出力形式の説明
+  constraints: string;   // 制約
+  samples: { input: string; output: string; note?: string }[]; // 表示+判定
+  hiddenTests: { input: string; output: string }[];            // 判定のみ
+}
+// さらに上級ステージ共通で
+//   statement?: string  … 問題文本文(IO問題は必須。ナビ・配列にも表示用に付与)
+//   solution?: string   … 模範解答Cコード(「解答例を見る」ボタン用)
+
 // 実行トレース: 初級・上級で共通のフォーマット(バックエンドも同じ JSON を返す)
 type TraceEvent =
   | { type: 'move'; from: Pos; to: Pos; dir: Direction }
@@ -61,17 +74,20 @@ type TraceEvent =
 
 ```
 front/scripts/gen-stages.ts  (node --experimental-strip-types で実行)
-  │  初級200問(チュートリアル3 + 生成197) + 上級100問を生成。
+  │  初級100問(チュートリアル3 + 生成97) + 上級100問を生成。
   │  初級の形状はまっすぐ/まがりかど/ジグザグ/かいだん/うずまき/へびみち/
   │  じゆうなみち/おおべや/わかれみち/どうくつ/めいろ/センサーめいろの12種。
-  │  上級はナビ60問(迷路30 + 地形いろいろ30) + 配列パズル40問
-  │  (昇順14/降順8/逆順8/最大値5/最小値5)。全問について
+  │  初級の出題順は最短手数の昇順(問題番号=難易度。同形状の連続は最大2問)。
+  │  上級はナビ30問 + 配列パズル25問 + 標準入出力(IO)問題45問
+  │  (IO問題は scripts/io-problems.ts に手書き)。全問について
   │  ・ナビ: BFS でゴール到達可能 + 右手法・左手法の両方で maxSteps 内に解けること
   │  ・配列: 値が重複せず、最初から達成済みでなく、バブルソートが maxSteps 内なこと
+  │  ・IO: 模範解答Cを gcc 実行して全ケース一致 + テンプレートのままでは不合格なこと
+  │  ・初級: 模範解答 solutionBlocks がミニインタプリタで maxSteps 内・★3以下でクリア
   │  ・同一盤面/同一配列が存在しないこと
   │  を検証し、星しきい値・maxSteps を実測から算出する
   │  (配列の★3しきい値は最小交換回数=サイクル分解、★2は転倒数=バブルソート相当)。
-  │  出題順は難易度順(ジッタ付きで形状・問題種別を混合)。
+  │  生成の実行には gcc が必要(IO問題・テンプレートの機械検証のため)。
   ├─► data/stages.json                 … 正データ。back が include_str! で同梱・配信
   └─► front/src/game/stages.data.json  … コピー。API 停止時のフロント側フォールバック
 ```
@@ -160,6 +176,24 @@ back/
 - gamelib 内のステップ上限（全 API 呼び出しをカウント。センサー呼び出しも数える）
 - Rust 側の実行タイムアウト（3秒）とコンパイルタイムアウト（10秒）
 - `env_clear()` + 一時ディレクトリ実行。コンテナでは read-only FS + no-new-privileges を併用
+
+### 標準入出力問題(IO問題)の判定
+
+`io` を持つステージへの `POST /api/run/c` は gamelib をリンクせず、ユーザーコード単体を
+`gcc user.c -o prog -std=c11 -O1 -lm` でコンパイルし、samples → hiddenTests の順に
+各ケースを stdin 供給で実行して stdout を期待値と比較する(各行の末尾空白と
+末尾の空行は無視して比較)。リソース制限は迷路実行と同じ(setrlimit + タイムアウト)。
+レスポンスは trace の代わりに per-case の結果を返す:
+
+```json
+{ "ok": true, "cleared": false,
+  "ioCases": [
+    { "name": "入力例 1", "pass": true,  "input": "...", "expected": "...", "actual": "..." },
+    { "name": "テスト 1", "pass": false, "input": "...", "expected": "...", "actual": "..." } ] }
+```
+
+全ケース合格で cleared=true。IO問題の星はクリア=★3(ステップ数評価はしない)。
+実行時エラー・ケース単位のタイムアウトはそのケースの actual にエラー文を入れて不合格とする。
 
 `game.h` の各 API は `GAME_TRACE` ファイルへの1行1イベントの書き込みとして実装し、
 実行終了後に Rust 側でパースして TraceEvent JSON で返す。盤面判定（is_wall_ahead 等）は

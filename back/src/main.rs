@@ -108,6 +108,8 @@ struct RunCRes {
     trace: Option<Vec<trace::TraceEvent>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cleared: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    io_cases: Option<Vec<sandbox::IoCase>>,
 }
 
 async fn run_c(
@@ -117,18 +119,38 @@ async fn run_c(
     let Some(stage) = state.by_id.get(&req.stage_id) else {
         return Err(StatusCode::NOT_FOUND);
     };
+    if stage.io.is_some() {
+        return match sandbox::run_io(stage, &req.code).await {
+            Ok(out) => Ok(Json(RunCRes {
+                ok: true,
+                error: None,
+                trace: None,
+                cleared: Some(out.cleared),
+                io_cases: Some(out.cases),
+            })),
+            Err(msg) => Ok(Json(RunCRes {
+                ok: false,
+                error: Some(msg),
+                trace: None,
+                cleared: None,
+                io_cases: None,
+            })),
+        };
+    }
     match sandbox::run(stage, &req.code).await {
         Ok(out) => Ok(Json(RunCRes {
             ok: true,
             error: None,
             trace: Some(out.trace),
             cleared: Some(out.cleared),
+            io_cases: None,
         })),
         Err(msg) => Ok(Json(RunCRes {
             ok: false,
             error: Some(msg),
             trace: None,
             cleared: None,
+            io_cases: None,
         })),
     }
 }

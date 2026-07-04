@@ -29,12 +29,16 @@ interface Props {
   progress: Progress;
   onSelect: (stageId: string) => void;
   onBack: () => void;
+  /** 直前にプレイしていたステージ id(あればそのページを開いた状態で表示する) */
+  lastStageId?: string;
 }
 
-export function StageSelect({ mode, stages, progress, onSelect, onBack }: Props) {
-  // まえに開いたときにクリア済みだったページではなく、いちばん最初の未クリアステージの
-  // ページを自動的にひらく(全クリア済みなら1ページ目)
+export function StageSelect({ mode, stages, progress, onSelect, onBack, lastStageId }: Props) {
+  // 直前にプレイしていたステージがあればそのページを、なければいちばん最初の
+  // 未クリアステージのページを自動的にひらく(全クリア済みなら1ページ目)
   const [page, setPage] = useState(() => {
+    const lastIndex = lastStageId ? stages.findIndex((s) => s.id === lastStageId) : -1;
+    if (lastIndex !== -1) return Math.floor(lastIndex / PAGE_SIZE);
     const firstUncleared = stages.findIndex((s) => !progress[s.id]);
     return firstUncleared === -1 ? 0 : Math.floor(firstUncleared / PAGE_SIZE);
   });

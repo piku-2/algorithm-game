@@ -2,14 +2,17 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import type { Block, Direction, Pos, Stage, TraceEvent } from '../game/types';
 import { countBlocks, run, starsFor } from '../game/interpreter';
 import { CODE_TEMPLATE } from '../game/stages';
-import { runC } from '../game/api';
+import { runC, type IoCaseResult } from '../game/api';
 import { sound } from '../game/sound';
 import type { Skin } from '../game/skins';
 import { loadRecords, saveRecords, type Records } from '../game/records';
 import { Board } from './Board';
 import { ArrayBoard } from './ArrayBoard';
-import { BlockEditor } from './BlockEditor';
+import { BlockEditor, cloneWithFreshIds } from './BlockEditor';
 import { CodeEditor } from './CodeEditor';
+import { ProblemPanel } from './ProblemPanel';
+import { IoResultPanel } from './IoResultPanel';
+import { SolutionModal } from './SolutionModal';
 
 type Status = 'editing' | 'compiling' | 'running' | 'crashed' | 'goal' | 'stepLimit' | 'unsolved';
 
@@ -22,6 +25,11 @@ const STATUS_MESSAGE: Record<Status, string> = {
   stepLimit: 'うごきすぎ! プログラムを みなおそう',
   unsolved: 'プログラムが おわったけど、まだ 条件を みたしていないよ',
 };
+
+/** IO問題で不正解ケースがあったときのメッセージ(通常の unsolved とは文言を変える) */
+const IO_UNSOLVED_MESSAGE = '不正解のケースがあるよ。下のテスト結果を見て見なおそう';
+
+type SolutionStep = 'none' | 'confirm' | 'shown';
 
 export interface ClearMeta {
   /** このステージに来てから最初の実行/ステップで(やり直しなしで)クリアした */
@@ -83,6 +91,8 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [bestScore, setBestScore] = useState<number | null>(null);
+  const [ioCases, setIoCases] = useState<IoCaseResult[] | null>(null);
+  const [solutionStep, setSolutionStep] = useState<SolutionStep>('none');
   const recordsRef = useRef<Records>(loadRecords());
   const [sfxOn, setSfxOn] = useState(sound.sfxEnabled);
   const [bgmOn, setBgmOn] = useState(sound.bgmEnabled);
@@ -129,6 +139,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     setActiveBlockId(null);
     setIsNewRecord(false);
     setBestScore(null);
+    setIoCases(null);
   }, [stage]);
 
   useEffect(() => clearPendingTimeouts, []);
@@ -150,6 +161,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     setCode(stage.template ?? CODE_TEMPLATE);
     runCountRef.current = 0;
     crashCountRef.current = 0;
+    setSolutionStep('none');
   }, [stage, reset]);
 
   useEffect(() => stopTimer, []);
@@ -296,6 +308,33 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     if (result) playTrace(result.trace, result.starsOnGoal, result.blockIds);
   };
 
+  /** IO問題(標準入出力)の実行: トレース再生の代わりにケースごとの合否を表示する */
+  const handleRunIo = async () => {
+    reset();
+    runCountRef.current++;
+    setStatus('compiling');
+    const result = await runC(stage.id, code);
+    if (!result.ok) {
+      setStatus('editing');
+      setCodeError(result.error ?? 'じっこうに しっぱいしました');
+      return;
+    }
+    setCodeError(null);
+    setIoCases(result.ioCases ?? []);
+    if (result.cleared) {
+      setStatus('goal');
+      sound.goal();
+      setStars(3);
+      onClear(stage.id, 3, {
+        firstTry: runCountRef.current === 1,
+        noCrash: crashCountRef.current === 0,
+      });
+      clearTimeoutsRef.current.push(window.setTimeout(() => setShowClearDialog(true), 700));
+    } else {
+      setStatus('unsolved');
+    }
+  };
+
   /** ステップ実行: 1クリックで1トレースイベントだけ進める */
   const handleStep = async () => {
     if (!stepRef.current) {
@@ -335,6 +374,8 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     status === 'compiling' ||
     (!stepping && status === 'running') ||
     (!stepping && stage.mode === 'block' && blocks.length === 0);
+  const statusMessage =
+    stage.io && status === 'unsolved' ? IO_UNSOLVED_MESSAGE : STATUS_MESSAGE[status];
 
   return (
     <div className="play-screen">
@@ -345,29 +386,39 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
       </header>
       <div className="play-main">
         <div className="board-pane">
-          {stage.puzzle ? (
-            <ArrayBoard
-              puzzle={stage.puzzle}
-              values={values}
-              lastSwap={lastSwap}
-              solved={status === 'goal'}
-            />
+          {stage.io ? (
+            <div className="io-pane">
+              <ProblemPanel statement={stage.statement} io={stage.io} />
+              {ioCases && <IoResultPanel cases={ioCases} />}
+            </div>
           ) : (
-            <Board
-              stage={stage}
-              pos={pos}
-              dir={dir}
-              crashed={status === 'crashed'}
-              goaled={status === 'goal'}
-              skin={skin}
-              trail={trail}
-              collectedGems={collectedGems}
-            />
-          )}
-          {stage.gems && stage.gems.length > 0 && (
-            <p className="gem-counter">
-              💎 {collectedGems.length} / {stage.gems.length}
-            </p>
+            <>
+              {stage.statement && <ProblemPanel statement={stage.statement} collapsible />}
+              {stage.puzzle ? (
+                <ArrayBoard
+                  puzzle={stage.puzzle}
+                  values={values}
+                  lastSwap={lastSwap}
+                  solved={status === 'goal'}
+                />
+              ) : (
+                <Board
+                  stage={stage}
+                  pos={pos}
+                  dir={dir}
+                  crashed={status === 'crashed'}
+                  goaled={status === 'goal'}
+                  skin={skin}
+                  trail={trail}
+                  collectedGems={collectedGems}
+                />
+              )}
+              {stage.gems && stage.gems.length > 0 && (
+                <p className="gem-counter">
+                  💎 {collectedGems.length} / {stage.gems.length}
+                </p>
+              )}
+            </>
           )}
           <div className="controls">
             {stage.mode === 'block' ? (
@@ -376,29 +427,37 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
                 onClick={handleRunBlocks}
                 disabled={busy || blocks.length === 0}
               >
-                ▶ じっこう
+                ▶ うごかす!
               </button>
             ) : (
-              <button className="run-btn" onClick={handleRunCode} disabled={busy}>
+              <button
+                className="run-btn"
+                onClick={stage.io ? handleRunIo : handleRunCode}
+                disabled={busy}
+              >
                 ▶ 実行
               </button>
             )}
-            <button onClick={handleStep} disabled={stepDisabled} title="1コマだけ すすめる">
-              {stepping ? '⏭ つぎへ' : '⏭ ステップ'}
-            </button>
+            {!stage.io && (
+              <button onClick={handleStep} disabled={stepDisabled} title="1コマだけ すすめる">
+                {stepping ? '⏭ つぎへ' : '⏭ ステップ'}
+              </button>
+            )}
             <button onClick={reset}>⟲ りせっと</button>
-            <label className="speed">
-              はやさ
-              <input
-                type="range"
-                min={80}
-                max={600}
-                step={20}
-                value={680 - speed}
-                disabled={busy}
-                onChange={(e) => setSpeed(680 - Number(e.target.value))}
-              />
-            </label>
+            {!stage.io && (
+              <label className="speed">
+                はやさ
+                <input
+                  type="range"
+                  min={80}
+                  max={600}
+                  step={20}
+                  value={680 - speed}
+                  disabled={busy}
+                  onChange={(e) => setSpeed(680 - Number(e.target.value))}
+                />
+              </label>
+            )}
             <button
               className="sound-btn"
               onClick={() => setSfxOn(sound.toggleSfx())}
@@ -415,13 +474,24 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
             </button>
           </div>
           {status !== 'editing' && (
-            <p className={`status status-${status}`}>{STATUS_MESSAGE[status]}</p>
+            <p className={`status status-${status}`}>{statusMessage}</p>
           )}
         </div>
         <div className="editor-pane">
           {stage.mode === 'block' ? (
             <>
               <BlockCounter count={countBlocks(blocks)} thresholds={stage.starThresholds} />
+              {stage.solutionBlocks && stage.solutionBlocks.length > 0 && (
+                <div className="solution-bar">
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => setSolutionStep('confirm')}
+                  >
+                    💡 解答例を見る
+                  </button>
+                </div>
+              )}
               <BlockEditor
                 allowed={stage.allowedBlocks}
                 blocks={blocks}
@@ -433,10 +503,57 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
               />
             </>
           ) : (
-            <CodeEditor code={code} onChange={setCode} disabled={busy} error={codeError} />
+            <>
+              {stage.solution && (
+                <div className="solution-bar">
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => setSolutionStep('confirm')}
+                  >
+                    💡 解答例を見る
+                  </button>
+                </div>
+              )}
+              <CodeEditor code={code} onChange={setCode} disabled={busy} error={codeError} />
+            </>
           )}
         </div>
       </div>
+      {solutionStep === 'confirm' && (
+        <div className="clear-overlay" onClick={() => setSolutionStep('none')}>
+          <div className="clear-dialog" onClick={(e) => e.stopPropagation()}>
+            <h2>解答例を見る?</h2>
+            <p>自分で考えてから見よう!</p>
+            <div className="clear-actions">
+              <button onClick={() => setSolutionStep('none')}>やめる</button>
+              <button className="run-btn" onClick={() => setSolutionStep('shown')}>
+                見る
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {solutionStep === 'shown' && stage.mode === 'block' && stage.solutionBlocks && (
+        <SolutionModal
+          solutionBlocks={stage.solutionBlocks}
+          onLoad={() => {
+            setBlocks(cloneWithFreshIds(stage.solutionBlocks ?? []));
+            setSolutionStep('none');
+          }}
+          onClose={() => setSolutionStep('none')}
+        />
+      )}
+      {solutionStep === 'shown' && stage.mode === 'code' && stage.solution && (
+        <SolutionModal
+          solution={stage.solution}
+          onPaste={() => {
+            setCode(stage.solution as string);
+            setSolutionStep('none');
+          }}
+          onClose={() => setSolutionStep('none')}
+        />
+      )}
       {status === 'goal' && stars !== null && showClearDialog && (
         <div className="clear-overlay">
           <div className="clear-dialog">
@@ -458,7 +575,9 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
                 ),
               )}
             </p>
-            {stage.mode === 'block' ? (
+            {stage.io ? (
+              <p>全てのテストケースに合格!</p>
+            ) : stage.mode === 'block' ? (
               <p>つかったブロック: {countBlocks(blocks)}こ</p>
             ) : stage.puzzle ? (
               <p>交換(swap)回数: {lastScore}回</p>

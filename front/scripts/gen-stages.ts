@@ -1,34 +1,55 @@
 /**
  * ステージ自動生成スクリプト。
  *   npm run gen:stages  (node --experimental-strip-types scripts/gen-stages.ts)
- * 初級(ブロック)200問 + 上級(Cコード)100問を生成し、
+ * 初級(ブロック)100問 + 上級(Cコード)100問を生成し、
  * 全ステージについて「クリア可能であること」を検証してから
  *   ../data/stages.json          (バックエンド配信用・正)
  *   src/game/stages.data.json    (フロント同梱フォールバック用コピー)
  * に書き出す。
  *
  * 設計方針:
- * - 形状は8種類(まっすぐ/まがりかど/ジグザグ/かいだん/うずまき/へびみち/じゆうなみち/おおべや)
- *   + 迷路2種(めいろ/センサーめいろ)。同一盤面は除去する。
- * - 出題順はチュートリアル3問のあと、最短手数ベースの難易度順に並べ、
- *   同じ形状が続かないようジッタを加えて混ぜる。
+ * - 形状は10種類(まっすぐ/まがりかど/ジグザグ/かいだん/うずまき/へびみち/じゆうなみち/
+ *   おおべや/わかれみち/どうくつ) + 迷路2種(めいろ/センサーめいろ)。同一盤面は除去する。
+ * - 出題順はチュートリアル3問のあと、最短手数ベースの難易度順にほぼ単調増加で並べる。
+ *   同じ形状は近傍(同難易度帯)の入れ替えで3問以上連続しないようにする。
+ * - センサーめいろは40問目あたりから導入し、後半ほど密に・大きめの迷路にする。
+ * - 初級全問に模範解答ブロック列(solutionBlocks)を付与し、ミニインタプリタで
+ *   maxSteps 内クリア・★3しきい値以下であることを機械検証する。
  * - センサー問題と上級問題の maxSteps は右手法・左手法の両方で
  *   解けるだけの余裕を持たせる(どちらも正しいアルゴリズムのため)。
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { IO_PROBLEMS, type IoProblemSpec } from './io-problems.ts';
 
 type Dir = 'up' | 'down' | 'left' | 'right';
 type BlockType = 'move' | 'turnLeft' | 'turnRight' | 'repeat' | 'repeatForever' | 'ifWall';
 
 type PuzzleKind = 'sort' | 'sortDesc' | 'reverse' | 'maxLast' | 'minFirst';
 
+interface IoJson {
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string;
+  samples: { input: string; output: string; note?: string }[];
+  hiddenTests: { input: string; output: string }[];
+}
+
+/** 模範解答のブロック(id なしのネスト。front/src/game/types.ts の Block と同じ意味論) */
+interface BlockJson {
+  kind: BlockType;
+  times?: number;
+  body?: BlockJson[];
+}
+
 interface StageJson {
   id: string;
   name: string;
   mode: 'block' | 'code';
-  rows: string[]; // '#'=壁 '.'=床 'G'=ゴール。配列パズルでは空
+  rows: string[]; // '#'=壁 '.'=床 'G'=ゴール。配列パズル・IO問題では空
   start: { x: number; y: number; dir: Dir };
   allowedBlocks: BlockType[];
   starThresholds: [number, number];
@@ -36,6 +57,14 @@ interface StageJson {
   hint: string;
   puzzle?: { kind: PuzzleKind; values: number[] };
   template?: string;
+  /** 問題文本文(上級のみ) */
+  statement?: string;
+  /** 標準入出力問題(paiza/AtCoder 風) */
+  io?: IoJson;
+  /** 模範解答Cコード(上級のみ) */
+  solution?: string;
+  /** 模範解答のブロック列(初級のみ) */
+  solutionBlocks?: BlockJson[];
 }
 
 // ---------- 乱数(再現可能) ----------
@@ -216,6 +245,155 @@ function estimateBlocks(actions: string[], repeatAllowed: boolean): number {
     i = j;
   }
   return n;
+}
+
+// ---------- 模範解答ブロック列(solutionBlocks)の構築と機械検証 ----------
+
+/** 最短行動列(M/L/R)を repeat 化して solutionBlocks を作る(estimateBlocks と同じ圧縮規則) */
+function buildLinearSolution(actions: string[], repeatAllowed: boolean): BlockJson[] {
+  const kindOf = (a: string): BlockType => (a === 'M' ? 'move' : a === 'L' ? 'turnLeft' : 'turnRight');
+  const out: BlockJson[] = [];
+  let i = 0;
+  while (i < actions.length) {
+    let j = i;
+    while (j < actions.length && actions[j] === actions[i]) j++;
+    const run = j - i;
+    if (repeatAllowed && run >= 3) {
+      out.push({ kind: 'repeat', times: run, body: [{ kind: kindOf(actions[i]) }] });
+    } else {
+      for (let k = 0; k < run; k++) out.push({ kind: kindOf(actions[i]) });
+    }
+    i = j;
+  }
+  return out;
+}
+
+/** センサー問題の標準解答: ずっとくりかえす[利き手をむく, もしかべ[反対]×3, まえにすすむ] (9ブロック) */
+function sensorSolution(hand: 'right' | 'left'): BlockJson[] {
+  const first: BlockType = hand === 'right' ? 'turnRight' : 'turnLeft';
+  const back: BlockType = hand === 'right' ? 'turnLeft' : 'turnRight';
+  return [
+    {
+      kind: 'repeatForever',
+      body: [
+        { kind: first },
+        { kind: 'ifWall', body: [{ kind: back }] },
+        { kind: 'ifWall', body: [{ kind: back }] },
+        { kind: 'ifWall', body: [{ kind: back }] },
+        { kind: 'move' },
+      ],
+    },
+  ];
+}
+
+function countBlockJson(blocks: BlockJson[]): number {
+  let n = 0;
+  for (const b of blocks) {
+    n++;
+    if (b.body) n += countBlockJson(b.body);
+  }
+  return n;
+}
+
+/**
+ * front/src/game/interpreter.ts と同じ意味論のミニインタプリタ。
+ * solutionBlocks が実際に maxSteps 内でゴールすることを機械検証するために使う。
+ */
+function runBlockJson(
+  rows: string[],
+  start: { x: number; y: number; dir: Dir },
+  blocks: BlockJson[],
+  maxSteps: number,
+): { cleared: boolean } {
+  const h = rows.length;
+  const w = rows[0].length;
+  const at = (x: number, y: number) => (y < 0 || y >= h || x < 0 || x >= w ? '#' : rows[y][x]);
+  let { x, y } = start;
+  let d = start.dir;
+  let steps = 0;
+  let halted = false;
+  let cleared = false;
+  const blocked = () => {
+    const [dx, dy] = DELTA[d];
+    return at(x + dx, y + dy) === '#';
+  };
+  const exec = (list: BlockJson[]) => {
+    for (const b of list) {
+      if (halted) return;
+      if (steps >= maxSteps) {
+        halted = true;
+        return;
+      }
+      steps++;
+      switch (b.kind) {
+        case 'move': {
+          if (blocked()) {
+            halted = true;
+            return;
+          }
+          const [dx, dy] = DELTA[d];
+          x += dx;
+          y += dy;
+          if (at(x, y) === 'G') {
+            halted = true;
+            cleared = true;
+            return;
+          }
+          break;
+        }
+        case 'turnLeft':
+          d = LEFT[d];
+          break;
+        case 'turnRight':
+          d = RIGHT[d];
+          break;
+        case 'repeat': {
+          const times = b.times ?? 1;
+          for (let i = 0; i < times; i++) {
+            if (halted) return;
+            exec(b.body ?? []);
+          }
+          break;
+        }
+        case 'repeatForever': {
+          while (!halted) {
+            if (steps >= maxSteps) {
+              halted = true;
+              return;
+            }
+            steps++;
+            exec(b.body ?? []);
+          }
+          break;
+        }
+        case 'ifWall': {
+          if (blocked()) exec(b.body ?? []);
+          break;
+        }
+      }
+    }
+  };
+  exec(blocks);
+  return { cleared };
+}
+
+/** solutionBlocks が maxSteps 内でゴールし、ブロック数が star3 以下であることを検証する */
+function verifySolutionBlocks(
+  id: string,
+  rows: string[],
+  start: { x: number; y: number; dir: Dir },
+  blocks: BlockJson[],
+  maxSteps: number,
+  star3: number,
+) {
+  const n = countBlockJson(blocks);
+  if (n > star3) {
+    throw new Error(`${id}: solutionBlocks has ${n} blocks > star3 threshold ${star3}`);
+  }
+  const { cleared } = runBlockJson(rows, start, blocks, maxSteps);
+  if (!cleared) {
+    throw new Error(`${id}: solutionBlocks does not reach the goal within maxSteps`);
+  }
 }
 
 // ---------- 壁伝いプログラム(右手法/左手法)のシミュレーション ----------
@@ -620,6 +798,7 @@ function pushBlockStage(id: string, name: string, p: Pending, allowed: BlockType
   let star3: number;
   let star2: number;
   let maxSteps: number;
+  let solutionBlocks: BlockJson[];
   if (allowed.includes('ifWall')) {
     // センサー問題: 右手法・左手法のどちらでも解けることを保証する
     const r = simulateWallFollow(p.shape.rows, p.shape.start, 'right');
@@ -628,11 +807,14 @@ function pushBlockStage(id: string, name: string, p: Pending, allowed: BlockType
     star3 = 9; // ずっと+利き手+もしかべ[反対]×3+まえへ = 9ブロック
     star2 = Math.max(p.actions.length, 15);
     maxSteps = Math.max(r.apiSteps, l.apiSteps) * 2 + 100;
+    solutionBlocks = sensorSolution('right');
   } else {
     star3 = estimateBlocks(p.actions, repeatAllowed);
     star2 = Math.max(p.actions.length, star3 + 1);
     maxSteps = p.actions.length * 3 + 30;
+    solutionBlocks = buildLinearSolution(p.actions, repeatAllowed);
   }
+  verifySolutionBlocks(id, p.shape.rows, p.shape.start, solutionBlocks, maxSteps, star3);
   stages.push({
     id,
     name,
@@ -643,10 +825,18 @@ function pushBlockStage(id: string, name: string, p: Pending, allowed: BlockType
     starThresholds: [star3, star2],
     maxSteps,
     hint: HINT[p.type],
+    solutionBlocks,
   });
 }
 
-function pushCodeStage(id: string, name: string, shape: Shape, hint: string) {
+function pushCodeStage(
+  id: string,
+  name: string,
+  shape: Shape,
+  hint: string,
+  statement: string,
+  solution: string,
+) {
   const actions = solveActions(shape.rows, shape.start);
   const r = simulateWallFollow(shape.rows, shape.start, 'right');
   const l = simulateWallFollow(shape.rows, shape.start, 'left');
@@ -670,8 +860,43 @@ function pushCodeStage(id: string, name: string, shape: Shape, hint: string) {
     starThresholds: [star3, star2],
     maxSteps,
     hint,
+    statement,
+    solution,
   });
 }
+
+/** ナビ問題の模範解答: 右手法(どの地形でも通る汎用アルゴリズム) */
+const NAV_SOLUTION = `#include "game.h"
+
+// 模範解答: 右手法(右手を壁につけたまま歩く)。
+// どんな迷路・地形でも、外周とつながった壁沿いを
+// たどっていけば必ずゴールにたどりつく。
+int main(void) {
+    while (!is_goal()) {
+        turn_right();                      // まず右を向いてみる
+        if (is_wall_ahead()) turn_left();  // 壁ならすこしずつ左へ戻す
+        if (is_wall_ahead()) turn_left();
+        if (is_wall_ahead()) turn_left();
+        move_forward();                    // あいている方向へ1マス進む
+    }
+    return 0;
+}
+`;
+
+/** ナビ問題の問題文(形状タイプ別) */
+const NAV_STATEMENT: Partial<Record<ShapeType, string>> = {
+  corridor:
+    'ゴールまで、まっすぐな通路が1本のびている。move_forward() をくり返してキャラクターをゴールまで歩かせよう。',
+  zigzag:
+    '通路が直角に折れ曲がりながら続いている。曲がり角で向きを変えつつ、キャラクターをゴールまで導こう。',
+  spiral:
+    '通路がうずまき状に内側へ巻きこんでいる。うずの中心にあるゴールを目指してキャラクターを進めよう。',
+  serpentine:
+    '通路がヘビのように行ったり来たりしながら続いている。折り返しのパターンを見つけて、ゴールまで進むプログラムを書こう。',
+  random:
+    '曲がりくねった一本道の先にゴールがある。壁センサーを使うか、道順を読み取って、ゴールまで進むプログラムを書こう。',
+  maze: '壁に囲まれた迷路の奥にゴールがある。壁センサーを使った探索アルゴリズムで迷路を抜け出そう。',
+};
 
 // --- 初級: チュートリアル3問(固定) ---
 
@@ -710,85 +935,128 @@ const TUTORIALS: { name: string; shape: Shape; allowed: BlockType[]; hint: strin
     const actions = solveActions(t.shape.rows, t.shape.start);
     if (!actions || actions.length === 0) throw new Error(`tutorial unsolvable: ${t.name}`);
     const star3 = estimateBlocks(actions, t.allowed.includes('repeat'));
+    const maxSteps = actions.length * 3 + 30;
+    const solutionBlocks = buildLinearSolution(actions, t.allowed.includes('repeat'));
+    const id = `b${String(n).padStart(3, '0')}`;
+    verifySolutionBlocks(id, t.shape.rows, t.shape.start, solutionBlocks, maxSteps, star3);
     stages.push({
-      id: `b${String(n).padStart(3, '0')}`,
+      id,
       name: t.name,
       mode: 'block',
       rows: t.shape.rows,
       start: t.shape.start,
       allowedBlocks: t.allowed,
       starThresholds: [star3, Math.max(actions.length, star3 + 1)],
-      maxSteps: actions.length * 3 + 30,
+      maxSteps,
       hint: t.hint,
+      solutionBlocks,
     });
     n++;
   }
 }
 
-// --- 初級: 生成(197問)。量産の単純形は絞り、変化のある形状を厚めに ---
+// --- 初級: 生成(97問)。似た問題の量産をやめ、各形状を絞って質を上げる ---
+// 内訳(97問): corridor4 l5 zigzag7 stair7 spiral7 serpentine7 random9
+//            decoy8 room9 cave9 maze12 = 通常84問 + sensor13問(中盤以降に導入)
 
 const pendings: Pending[] = [];
 
-for (const len of [3, 4, 5, 6, 9, 12]) {
+for (const len of [3, 4, 6, 9]) {
   pendings.push(makeUnique('corridor', () => corridor(len)));
 }
-for (let i = 0; i < 8; i++) {
+for (let i = 0; i < 5; i++) {
   pendings.push(makeUnique('l', () => lShape(randInt(2, 7), randInt(2, 7), pick(['down', 'up']))));
 }
-for (let i = 0; i < 10; i++) {
+for (let i = 0; i < 7; i++) {
   pendings.push(makeUnique('zigzag', () => zigzag(randInt(2, 6), randInt(1, 4))));
 }
-for (let i = 0; i < 10; i++) {
+for (let i = 0; i < 7; i++) {
   pendings.push(makeUnique('stair', () => staircase(randInt(2, 6), randInt(1, 3))));
 }
-for (let i = 0; i < 12; i++) {
-  pendings.push(makeUnique('spiral', () => spiral(randInt(4, 12), rand() < 0.5)));
+for (let i = 0; i < 7; i++) {
+  pendings.push(makeUnique('spiral', () => spiral(randInt(4, 13), rand() < 0.5)));
 }
-for (let i = 0; i < 12; i++) {
+for (let i = 0; i < 7; i++) {
   pendings.push(makeUnique('serpentine', () => serpentine(randInt(2, 5), randInt(3, 8))));
 }
-for (let i = 0; i < 14; i++) {
-  pendings.push(makeUnique('random', () => randomPath(randInt(6, 26))));
+for (let i = 0; i < 9; i++) {
+  pendings.push(makeUnique('random', () => randomPath(randInt(6, 28))));
 }
-for (let i = 0; i < 18; i++) {
+for (let i = 0; i < 8; i++) {
+  pendings.push(makeUnique('decoy', () => decoyPath(randInt(8, 24), randInt(2, 5))));
+}
+for (let i = 0; i < 9; i++) {
   pendings.push(
     makeUnique('room', () => openRoom(randInt(4, 9), randInt(3, 7), 0.12 + rand() * 0.16)),
   );
 }
-for (let i = 0; i < 15; i++) {
-  pendings.push(makeUnique('decoy', () => decoyPath(randInt(8, 22), randInt(2, 5))));
+for (let i = 0; i < 9; i++) {
+  pendings.push(makeUnique('cave', () => cave(randInt(11, 21), randInt(9, 15))));
 }
 for (let i = 0; i < 12; i++) {
-  pendings.push(makeUnique('cave', () => cave(randInt(11, 19), randInt(9, 13))));
-}
-for (let i = 0; i < 38; i++) {
-  const size = 3 + Math.floor(i / 7);
-  pendings.push(makeUnique('maze', () => maze(randInt(2, size + 1), randInt(2, size))));
+  // 最終盤(90番台)向けに、後の方ほど大きく歯ごたえのある迷路にする
+  const size = 3 + Math.floor(i / 2);
+  pendings.push(makeUnique('maze', () => maze(randInt(2, size + 2), randInt(2, size + 1))));
 }
 const sensorPendings: Pending[] = [];
-for (let i = 0; i < 42; i++) {
-  const size = 3 + Math.floor(i / 7);
-  sensorPendings.push(makeUnique('sensor', () => maze(randInt(3, size + 1), randInt(2, size))));
+for (let i = 0; i < 13; i++) {
+  // センサー問題も後半ほど大きめの迷路にして歯ごたえを出す
+  const size = 3 + Math.floor(i / 2);
+  sensorPendings.push(makeUnique('sensor', () => maze(randInt(3, size + 2), randInt(2, size + 1))));
 }
 
-// --- 並び順: 難易度(最短手数+ジッタ)順。センサー問題は後半に難易度順で挿入 ---
+// --- 並び順: 最短手数ベースの難易度順(ほぼ単調増加)。センサーは中盤(40問目あたり)から後半に厚く導入 ---
 
-pendings.sort((a, b) => a.sortKey - b.sortKey);
-sensorPendings.sort((a, b) => a.sortKey - b.sortKey);
-// センサー問題は 78問目以降(通常問題2問につき1問)に混ぜる
+pendings.sort((a, b) => a.difficulty - b.difficulty || a.sortKey - b.sortKey);
+sensorPendings.sort((a, b) => a.difficulty - b.difficulty || a.sortKey - b.sortKey);
+
+// 通常問題を難易度順に並べたベースへ、37問目(=全体で40問目あたり)以降にセンサー問題を
+// 後半ほど密に混ぜる(前半 3問に1問 → 終盤 1.5問に1問)。
 const ordered: Pending[] = [];
 {
   let si = 0;
-  let normalSince = 0;
-  for (const p of pendings) {
-    ordered.push(p);
-    normalSince++;
-    if (ordered.length + TUTORIALS.length > 80 && normalSince >= 2 && si < sensorPendings.length) {
+  const SENSOR_START = 37; // ordered.length がこの値を超えたら混ぜ始める
+  let sinceSensor = 0;
+  for (let i = 0; i < pendings.length; i++) {
+    ordered.push(pendings[i]);
+    sinceSensor++;
+    if (si >= sensorPendings.length) continue;
+    const remainingNormal = pendings.length - (i + 1);
+    const remainingSensor = sensorPendings.length - si;
+    const progressed = ordered.length > SENSOR_START;
+    // 残り問題数に対してセンサーの密度目標を上げていく(後半ほど厚く)
+    const targetGap = progressed
+      ? Math.max(1, Math.round((remainingNormal + 1) / (remainingSensor + 1)))
+      : Infinity;
+    if (progressed && sinceSensor >= targetGap) {
       ordered.push(sensorPendings[si++]);
-      normalSince = 0;
+      sinceSensor = 0;
     }
   }
   while (si < sensorPendings.length) ordered.push(sensorPendings[si++]);
+}
+
+// --- 同じ形状が3問以上連続しないよう、近傍(同難易度帯)の入れ替えで解消する ---
+// (10問区切りの中央値による「ほぼ単調増加」の検証を壊さないよう、遠い位置とは入れ替えない)
+{
+  const WINDOW = 6;
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    for (let i = 2; i < ordered.length; i++) {
+      if (ordered[i].type === ordered[i - 1].type && ordered[i - 1].type === ordered[i - 2].type) {
+        for (let j = i + 1; j < Math.min(ordered.length, i + 1 + WINDOW); j++) {
+          if (ordered[j].type !== ordered[i].type) {
+            const tmp = ordered[i];
+            ordered[i] = ordered[j];
+            ordered[j] = tmp;
+            changed = true;
+            break;
+          }
+        }
+      }
+    }
+    if (!changed) break;
+  }
 }
 
 // --- id/名前を振ってステージ化(チュートリアル3問の続きから) ---
@@ -820,9 +1088,9 @@ const ordered: Pending[] = [];
   }
 }
 
-// --- 上級(Cコード)100問: ナビ60問(形状いろいろ) + 配列パズル40問(ソート等) ---
+// --- 上級(Cコード)100問: ナビ30 + 配列パズル25 + 標準入出力(IO)問題45 ---
 // 迷路だけだと壁伝いの同じプログラムが全問に通ってしまうため、
-// 地形バリエーションと、まったく別のアルゴリズムが必要な配列問題を混ぜる。
+// 地形バリエーション・配列問題・手書きのIO問題(io-problems.ts)を混ぜる。
 
 // 配列パズルのユーティリティ
 
@@ -916,6 +1184,92 @@ const PUZZLE_HINT: Record<PuzzleKind, string> = {
   minFirst: '一番小さい値の場所を探して、先頭と交換しよう。',
 };
 
+const PUZZLE_STATEMENT: Record<PuzzleKind, string> = {
+  sort: '高さがバラバラの棒グラフが並んでいる。swap_values(i, j) で2本ずつ入れかえて、左から右へ小さい順(昇順)に並べ替えよう。交換回数が少ないほど星が増える。',
+  sortDesc:
+    '棒グラフの列を、こんどは左から右へ大きい順(降順)に並べ替えよう。昇順ソートとの違いは比較の向きだけだ。',
+  reverse:
+    '並んでいる棒グラフを、そっくり左右逆の順番にしよう。両端から中央へ向かって交換していくのが最短の作戦だ。',
+  maxLast:
+    '配列の中でいちばん大きい値を探して、いちばん右(最後の位置)へ移動させよう。全部を並べ替える必要はない。',
+  minFirst:
+    '配列の中でいちばん小さい値を探して、いちばん左(先頭の位置)へ移動させよう。全部を並べ替える必要はない。',
+};
+
+const PUZZLE_SOLUTION: Record<PuzzleKind, string> = {
+  sort: `#include "game.h"
+
+// 模範解答: 選択ソート。
+// i 番目に「まだ並べていない中でいちばん小さい値」を置いていく。
+// 交換回数が少ないので星も取りやすい。
+int main(void) {
+    int n = array_length();
+    for (int i = 0; i < n - 1; i++) {
+        int minIdx = i;
+        for (int j = i + 1; j < n; j++) {
+            if (get_value(j) < get_value(minIdx)) minIdx = j;
+        }
+        if (minIdx != i) swap_values(i, minIdx);
+    }
+    return 0;
+}
+`,
+  sortDesc: `#include "game.h"
+
+// 模範解答: 選択ソート(降順)。
+// i 番目に「残りの中でいちばん大きい値」を置いていく。
+int main(void) {
+    int n = array_length();
+    for (int i = 0; i < n - 1; i++) {
+        int maxIdx = i;
+        for (int j = i + 1; j < n; j++) {
+            if (get_value(j) > get_value(maxIdx)) maxIdx = j;
+        }
+        if (maxIdx != i) swap_values(i, maxIdx);
+    }
+    return 0;
+}
+`,
+  reverse: `#include "game.h"
+
+// 模範解答: 両端から中央に向かって交換していく。
+// n/2 回の交換で必ず終わる。
+int main(void) {
+    int n = array_length();
+    for (int i = 0; i < n / 2; i++) {
+        swap_values(i, n - 1 - i);
+    }
+    return 0;
+}
+`,
+  maxLast: `#include "game.h"
+
+// 模範解答: 最大値の場所を探して、最後の位置と1回だけ交換する。
+int main(void) {
+    int n = array_length();
+    int maxIdx = 0;
+    for (int i = 1; i < n; i++) {
+        if (get_value(i) > get_value(maxIdx)) maxIdx = i;
+    }
+    if (maxIdx != n - 1) swap_values(maxIdx, n - 1);
+    return 0;
+}
+`,
+  minFirst: `#include "game.h"
+
+// 模範解答: 最小値の場所を探して、先頭と1回だけ交換する。
+int main(void) {
+    int n = array_length();
+    int minIdx = 0;
+    for (int i = 1; i < n; i++) {
+        if (get_value(i) < get_value(minIdx)) minIdx = i;
+    }
+    if (minIdx != 0) swap_values(0, minIdx);
+    return 0;
+}
+`,
+};
+
 function arrayTemplate(kind: PuzzleKind): string {
   return `#include "game.h"
 
@@ -981,16 +1335,174 @@ function pushArrayStage(id: string, name: string, spec: ArraySpec) {
     hint: PUZZLE_HINT[spec.kind],
     puzzle: { kind: spec.kind, values: spec.values },
     template: arrayTemplate(spec.kind),
+    statement: PUZZLE_STATEMENT[spec.kind],
+    solution: PUZZLE_SOLUTION[spec.kind],
   });
 }
 
-// チュートリアル2問
+// ---------- IO問題(標準入出力・paiza/AtCoder 風)の検証とステージ化 ----------
+
+/** バックエンド(back/src/sandbox.rs)と同じ規則で出力を正規化: 各行の末尾空白除去 + 末尾空行除去 */
+function normalizeOutput(out: string): string {
+  const lines = out.split('\n').map((l) => l.replace(/[ \t\r]+$/u, ''));
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines.join('\n');
+}
+
+/**
+ * 全IO問題の模範解答を gcc でコンパイルし、samples + hiddenTests の全ケースを
+ * stdin 実行して期待出力と一致することを確認する。不一致なら生成失敗。
+ */
+function verifyIoProblems(problems: IoProblemSpec[]) {
+  const work = mkdtempSync(join(tmpdir(), 'io-verify-'));
+  try {
+    for (const p of problems) {
+      const src = join(work, `${p.slug}.c`);
+      const bin = join(work, p.slug);
+      writeFileSync(src, p.solution);
+      try {
+        execFileSync('gcc', [src, '-o', bin, '-std=c11', '-O1', '-lm'], { stdio: 'pipe' });
+      } catch (e) {
+        throw new Error(`IO problem ${p.slug}: solution failed to compile: ${e}`);
+      }
+      const cases = [
+        ...p.samples.map((s, i) => ({ ...s, label: `sample ${i + 1}` })),
+        ...p.hiddenTests.map((t, i) => ({ ...t, label: `hidden ${i + 1}` })),
+      ];
+      for (const c of cases) {
+        const actual = execFileSync(bin, {
+          input: c.input.endsWith('\n') ? c.input : `${c.input}\n`,
+          encoding: 'utf8',
+          timeout: 5000,
+        });
+        if (normalizeOutput(actual) !== normalizeOutput(c.output)) {
+          throw new Error(
+            `IO problem ${p.slug} (${c.label}): expected ${JSON.stringify(c.output)}, got ${JSON.stringify(actual)}`,
+          );
+        }
+      }
+    }
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/**
+ * 「最初から書かれているプログラムのまま実行して解ける問題がある」ことへの対策(TASKS.md 92行目):
+ * IO問題の初期テンプレートを gcc でコンパイル・実行し、全ケース合格に**ならない**ことを検証する。
+ * テンプレートのまま全ケース合格してしまう問題が見つかったら、テンプレート側(io-problems.ts)を
+ * 直す必要がある(問題自体は変えない)。
+ */
+function verifyIoTemplatesUnsolved(problems: IoProblemSpec[]) {
+  const work = mkdtempSync(join(tmpdir(), 'io-template-verify-'));
+  try {
+    for (const p of problems) {
+      const src = join(work, `${p.slug}-template.c`);
+      const bin = join(work, `${p.slug}-template`);
+      writeFileSync(src, p.template);
+      let compiled = true;
+      try {
+        execFileSync('gcc', [src, '-o', bin, '-std=c11', '-O1', '-lm'], { stdio: 'pipe' });
+      } catch {
+        compiled = false; // コンパイルすら通らないなら当然「解けてしまう」ことはない
+      }
+      if (!compiled) continue;
+      const cases = [...p.samples, ...p.hiddenTests];
+      let allPass = true;
+      for (const c of cases) {
+        try {
+          const actual = execFileSync(bin, {
+            input: c.input.endsWith('\n') ? c.input : `${c.input}\n`,
+            encoding: 'utf8',
+            timeout: 5000,
+          });
+          if (normalizeOutput(actual) !== normalizeOutput(c.output)) {
+            allPass = false;
+            break;
+          }
+        } catch {
+          allPass = false;
+          break;
+        }
+      }
+      if (allPass) {
+        throw new Error(
+          `IO problem ${p.slug}: initial template already solves all test cases — fix the template (not the problem)`,
+        );
+      }
+    }
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/** IO問題データ自体の妥当性チェック */
+function validateIoProblemSpecs(problems: IoProblemSpec[]) {
+  if (problems.length !== 45) throw new Error(`IO problems: expected 45, got ${problems.length}`);
+  const slugs = new Set(problems.map((p) => p.slug));
+  const names = new Set(problems.map((p) => p.name));
+  if (slugs.size !== problems.length) throw new Error('IO problems: duplicate slug');
+  if (names.size !== problems.length) throw new Error('IO problems: duplicate name');
+  for (const p of problems) {
+    if (p.rank < 1 || p.rank > 10) throw new Error(`IO problem ${p.slug}: rank out of range`);
+    if (p.samples.length < 2 || p.samples.length > 3) {
+      throw new Error(`IO problem ${p.slug}: samples must be 2-3`);
+    }
+    if (!p.samples[0].note) throw new Error(`IO problem ${p.slug}: first sample needs a note`);
+    if (p.hiddenTests.length < 3 || p.hiddenTests.length > 6) {
+      throw new Error(`IO problem ${p.slug}: hiddenTests must be 3-6`);
+    }
+    if (!p.statement || !p.solution || !p.template) {
+      throw new Error(`IO problem ${p.slug}: statement/solution/template required`);
+    }
+  }
+}
+
+function pushIoStage(id: string, p: IoProblemSpec) {
+  stages.push({
+    id,
+    name: p.name,
+    mode: 'code',
+    rows: [],
+    start: { x: 0, y: 0, dir: 'right' },
+    allowedBlocks: [],
+    // IO問題はクリア=★3(ステップ数評価をしない)。しきい値はダミー
+    starThresholds: [1, 1],
+    maxSteps: 10000,
+    hint: '入出力例をよく見て、scanf で入力を読み printf で答えを出力しよう。出力の形式(改行・空白)も採点される。',
+    statement: p.statement,
+    io: {
+      inputFormat: p.inputFormat,
+      outputFormat: p.outputFormat,
+      constraints: p.constraints,
+      samples: p.samples,
+      hiddenTests: p.hiddenTests,
+    },
+    solution: p.solution,
+    template: p.template,
+  });
+}
+
+// --- 上級(Cコード)100問: ナビ30(チュートリアル2含む) + 配列25 + IO問題45 ---
+
+// チュートリアル2問(ナビ30問のうちの最初の2問)
 
 pushCodeStage(
   'c001',
   'まっすぐすすめ',
   { rows: ['########', '#.....G#', '########'], start: { x: 1, y: 1, dir: 'right' } },
   'move_forward() でキャラクターが1マス進む。ループを使ってみよう。',
+  'まっすぐな通路の先にゴールがある。move_forward() を呼ぶとキャラクターが1マス進む。ゴールのマスまで歩かせよう。',
+  `#include "game.h"
+
+// 模範解答: ゴールに着くまで1マスずつ進む。
+int main(void) {
+    while (!is_goal()) {
+        move_forward();
+    }
+    return 0;
+}
+`,
 );
 pushCodeStage(
   'c002',
@@ -1000,57 +1512,69 @@ pushCodeStage(
     start: { x: 1, y: 1, dir: 'right' },
   },
   'is_wall_ahead() で前方の壁を調べながら進むアルゴリズムを書こう。',
+  '小さな迷路に迷いこんだ。is_wall_ahead() で前方の壁を調べながら、ゴールまでの道を探すプログラムを書こう。',
+  NAV_SOLUTION,
 );
 
-// ナビ58問: 迷路30 + 形状いろいろ28
+// ナビ28問: 迷路14 + 形状いろいろ14(チュートリアル2問とあわせて計30)
 
 const NAV_HINT_GENERIC =
   '地形に合わせた専用プログラムを書くと少ないステップでクリアできて星が増える。壁センサーで汎用に解いてもよい。';
 const navPendings: Pending[] = [];
-for (let i = 0; i < 4; i++) {
+for (let i = 0; i < 2; i++) {
   navPendings.push(makeUnique('corridor', () => corridor(randInt(4, 20)), true));
 }
-for (let i = 0; i < 5; i++) {
+for (let i = 0; i < 3; i++) {
   navPendings.push(makeUnique('zigzag', () => zigzag(randInt(3, 8), randInt(2, 4)), true));
 }
-for (let i = 0; i < 5; i++) {
+for (let i = 0; i < 3; i++) {
   navPendings.push(makeUnique('spiral', () => spiral(randInt(6, 13), rand() < 0.5), true));
 }
-for (let i = 0; i < 5; i++) {
+for (let i = 0; i < 2; i++) {
   navPendings.push(makeUnique('serpentine', () => serpentine(randInt(3, 6), randInt(4, 9)), true));
 }
-for (let i = 0; i < 9; i++) {
+for (let i = 0; i < 4; i++) {
   navPendings.push(makeUnique('random', () => randomPath(randInt(12, 32)), true));
 }
-for (let i = 0; i < 30; i++) {
-  const size = 4 + Math.floor(i / 6);
+for (let i = 0; i < 14; i++) {
+  const size = 4 + Math.floor(i / 3);
   navPendings.push(makeUnique('maze', () => maze(randInt(3, size + 2), randInt(3, size + 1)), true));
 }
 navPendings.sort((a, b) => a.sortKey - b.sortKey);
 
-// 配列40問: sort14 / sortDesc8 / reverse8 / maxLast5 / minFirst5
+// 配列25問: sort9 / sortDesc5 / reverse5 / maxLast3 / minFirst3
 
 const arraySpecs: ArraySpec[] = [];
-for (let i = 0; i < 5; i++) arraySpecs.push(makeArraySpec('minFirst', randInt(4, 12)));
-for (let i = 0; i < 5; i++) arraySpecs.push(makeArraySpec('maxLast', randInt(4, 12)));
-for (let i = 0; i < 8; i++) arraySpecs.push(makeArraySpec('reverse', 3 + i));
-for (let i = 0; i < 14; i++) arraySpecs.push(makeArraySpec('sort', 4 + i));
-for (let i = 0; i < 8; i++) arraySpecs.push(makeArraySpec('sortDesc', 5 + i));
+for (let i = 0; i < 3; i++) arraySpecs.push(makeArraySpec('minFirst', randInt(4, 12)));
+for (let i = 0; i < 3; i++) arraySpecs.push(makeArraySpec('maxLast', randInt(4, 12)));
+for (let i = 0; i < 5; i++) arraySpecs.push(makeArraySpec('reverse', 3 + i * 2));
+for (let i = 0; i < 9; i++) arraySpecs.push(makeArraySpec('sort', 4 + i));
+for (let i = 0; i < 5; i++) arraySpecs.push(makeArraySpec('sortDesc', 5 + i * 2));
 arraySpecs.sort((a, b) => a.sortKey - b.sortKey);
 
-// ナビと配列を難易度順のまま交互に混ぜる(比率マージ)
+// IO問題45問: データ妥当性 + 模範解答の gcc 実行検証(不合格なら生成失敗)
+
+validateIoProblemSpecs(IO_PROBLEMS);
+verifyIoProblems(IO_PROBLEMS);
+verifyIoTemplatesUnsolved(IO_PROBLEMS);
+const ioProblems = [...IO_PROBLEMS].sort((a, b) => a.rank - b.rank);
+
+// ナビ・配列・IO の3系統を難易度順のまま比率マージ
+// (各系統は内部で難易度昇順。IO の難易度は手書きの rank(1-10)を使う)
 
 {
   let n = 3;
   let ni = 0;
   let ai = 0;
+  let ii = 0;
   const navTypeCount = new Map<ShapeType, number>();
   const puzzleTypeCount = new Map<PuzzleKind, number>();
-  while (ni < navPendings.length || ai < arraySpecs.length) {
-    const navFrac = ni / navPendings.length;
-    const arrFrac = ai / arraySpecs.length;
+  while (ni < navPendings.length || ai < arraySpecs.length || ii < ioProblems.length) {
+    const navFrac = ni < navPendings.length ? ni / navPendings.length : Infinity;
+    const arrFrac = ai < arraySpecs.length ? ai / arraySpecs.length : Infinity;
+    const ioFrac = ii < ioProblems.length ? ii / ioProblems.length : Infinity;
     const id = `c${String(n).padStart(3, '0')}`;
-    if (ni < navPendings.length && (ai >= arraySpecs.length || navFrac <= arrFrac)) {
+    if (navFrac <= arrFrac && navFrac <= ioFrac) {
       const p = navPendings[ni++];
       const idx = (navTypeCount.get(p.type) ?? 0) + 1;
       navTypeCount.set(p.type, idx);
@@ -1061,12 +1585,16 @@ arraySpecs.sort((a, b) => a.sortKey - b.sortKey);
         p.type === 'maze'
           ? '壁センサーを使った探索アルゴリズム(右手法・左手法など)を実装しよう。'
           : NAV_HINT_GENERIC,
+        NAV_STATEMENT[p.type] ?? NAV_STATEMENT.random!,
+        NAV_SOLUTION,
       );
-    } else {
+    } else if (arrFrac <= ioFrac) {
       const spec = arraySpecs[ai++];
       const idx = (puzzleTypeCount.get(spec.kind) ?? 0) + 1;
       puzzleTypeCount.set(spec.kind, idx);
       pushArrayStage(id, `${PUZZLE_NAME[spec.kind]} ${idx}`, spec);
+    } else {
+      pushIoStage(id, ioProblems[ii++]);
     }
     n++;
   }
@@ -1076,14 +1604,32 @@ arraySpecs.sort((a, b) => a.sortKey - b.sortKey);
 
 const blockCount = stages.filter((s) => s.mode === 'block').length;
 const codeCount = stages.filter((s) => s.mode === 'code').length;
-if (blockCount !== 200 || codeCount !== 100) {
+if (blockCount !== 100 || codeCount !== 100) {
   throw new Error(`stage count mismatch: block=${blockCount} code=${codeCount}`);
+}
+// 初級全問に solutionBlocks があること
+for (const s of stages.filter((x) => x.mode === 'block')) {
+  if (!s.solutionBlocks || s.solutionBlocks.length === 0) {
+    throw new Error(`${s.id}: missing solutionBlocks`);
+  }
 }
 const ids = new Set(stages.map((s) => s.id));
 if (ids.size !== stages.length) throw new Error('duplicate stage id');
+// 上級の内訳: ナビ30 + 配列25 + IO45
+const codeStages = stages.filter((s) => s.mode === 'code');
+const ioCount = codeStages.filter((s) => s.io).length;
+const arrCount = codeStages.filter((s) => s.puzzle).length;
+const navCount = codeStages.filter((s) => !s.io && !s.puzzle).length;
+if (navCount !== 30 || arrCount !== 25 || ioCount !== 45) {
+  throw new Error(`code stage mix mismatch: nav=${navCount} array=${arrCount} io=${ioCount}`);
+}
+// 上級は全問 statement と solution を持つこと
+for (const s of codeStages) {
+  if (!s.statement || !s.solution) throw new Error(`${s.id}: missing statement/solution`);
+}
 // 上級ナビ + センサー問題は左右どちらの壁伝いでも maxSteps 内に解けることを最終確認
 for (const s of stages) {
-  if ((s.mode === 'code' && !s.puzzle) || s.allowedBlocks.includes('ifWall')) {
+  if ((s.mode === 'code' && !s.puzzle && !s.io) || s.allowedBlocks.includes('ifWall')) {
     for (const hand of ['right', 'left'] as const) {
       const f = simulateWallFollow(s.rows, s.start, hand);
       if (!f || f.apiSteps > s.maxSteps) {
@@ -1099,6 +1645,14 @@ for (const s of stages) {
       throw new Error(`${s.id}: puzzle already solved at start`);
     }
     if (new Set(s.puzzle.values).size !== n) throw new Error(`${s.id}: duplicate values`);
+    // テンプレートに swap_values の実行(コメントではない呼び出し)が無いこと
+    const codeOnly = (s.template ?? '')
+      .split('\n')
+      .map((line) => line.replace(/\/\/.*$/, ''))
+      .join('\n');
+    if (/swap_values\s*\(/.test(codeOnly)) {
+      throw new Error(`${s.id}: template already calls swap_values — fix the template`);
+    }
   }
 }
 
@@ -1113,4 +1667,5 @@ for (const s of stages.filter((x) => x.mode === 'block')) {
   typeSummary.set(t, (typeSummary.get(t) ?? 0) + 1);
 }
 console.log(`OK: ${blockCount} block + ${codeCount} code stages generated & verified`);
+console.log(`code mix: nav=${navCount} array=${arrCount} io=${ioCount} (io solutions gcc-verified)`);
 console.log('block types:', Object.fromEntries(typeSummary));
