@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Block, Direction, Pos, Stage, TraceEvent } from '../game/types';
 import { countBlocks, run, starsFor } from '../game/interpreter';
 import { CODE_TEMPLATE } from '../game/stages';
@@ -67,15 +67,18 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
   const [lastScore, setLastScore] = useState(0); // クリア時のステップ/交換回数
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const [stepping, setStepping] = useState(false);
+  const [showClearDialog, setShowClearDialog] = useState(false);
   const [sfxOn, setSfxOn] = useState(sound.sfxEnabled);
   const [bgmOn, setBgmOn] = useState(sound.bgmEnabled);
   const timerRef = useRef<number | null>(null);
+  const clearTimeoutsRef = useRef<number[]>([]);
   const stepRef = useRef<{
     trace: TraceEvent[];
     blockIds?: (string | null)[];
     i: number;
     starsOnGoal: () => 1 | 2 | 3;
   } | null>(null);
+  const stepStartingRef = useRef(false);
 
   const stopTimer = () => {
     if (timerRef.current !== null) {
@@ -84,10 +87,17 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     }
   };
 
+  const clearPendingTimeouts = () => {
+    clearTimeoutsRef.current.forEach((id) => window.clearTimeout(id));
+    clearTimeoutsRef.current = [];
+  };
+
   const reset = useCallback(() => {
     stopTimer();
+    clearPendingTimeouts();
     stepRef.current = null;
     setStepping(false);
+    setShowClearDialog(false);
     setStatus('editing');
     setPos({ x: stage.start.x, y: stage.start.y });
     setDir(stage.start.dir);
@@ -97,6 +107,18 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     setCodeError(null);
     setActiveBlockId(null);
   }, [stage]);
+
+  useEffect(() => clearPendingTimeouts, []);
+
+  // ★の出現にあわせて1つずつ「ぽろん」音を鳴らす
+  useEffect(() => {
+    if (!showClearDialog || stars === null) return;
+    const ids: number[] = [];
+    for (let i = 0; i < stars; i++) {
+      ids.push(window.setTimeout(() => sound.star(i), i * 150));
+    }
+    return () => ids.forEach((id) => window.clearTimeout(id));
+  }, [showClearDialog, stars]);
 
   useEffect(() => {
     reset();
@@ -139,6 +161,10 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
           const s = starsOnGoal();
           setStars(s);
           onClear(stage.id, s);
+          // 紙吹雪・ふきだしの演出を見せてからクリアダイアログを出す
+          clearTimeoutsRef.current.push(
+            window.setTimeout(() => setShowClearDialog(true), 700),
+          );
           break;
         }
         case 'unsolved':
@@ -226,15 +252,22 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
   /** ステップ実行: 1クリックで1トレースイベントだけ進める */
   const handleStep = async () => {
     if (!stepRef.current) {
-      reset();
-      const prepared = stage.mode === 'block' ? computeBlocksTrace() : await computeCodeTrace();
-      if (!prepared || prepared.trace.length === 0) {
-        setStatus('editing');
-        return;
+      // Cコードのコンパイル待ち中に連打しても2重にセッションを開始しない
+      if (stepStartingRef.current) return;
+      stepStartingRef.current = true;
+      try {
+        reset();
+        const prepared = stage.mode === 'block' ? computeBlocksTrace() : await computeCodeTrace();
+        if (!prepared || prepared.trace.length === 0) {
+          setStatus('editing');
+          return;
+        }
+        stepRef.current = { ...prepared, i: 0 };
+        setStepping(true);
+        setStatus('running');
+      } finally {
+        stepStartingRef.current = false;
       }
-      stepRef.current = { ...prepared, i: 0 };
-      setStepping(true);
-      setStatus('running');
     }
     const s = stepRef.current;
     if (!s || s.i >= s.trace.length) return;
@@ -349,13 +382,26 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
           )}
         </div>
       </div>
-      {status === 'goal' && stars !== null && (
+      {status === 'goal' && stars !== null && showClearDialog && (
         <div className="clear-overlay">
           <div className="clear-dialog">
             <h2>クリア!</h2>
             <p className="clear-stars">
-              {'★'.repeat(stars)}
-              <span className="star-empty">{'★'.repeat(3 - stars)}</span>
+              {Array.from({ length: 3 }, (_, i) =>
+                i < stars ? (
+                  <span
+                    key={i}
+                    className="star-pop"
+                    style={{ animationDelay: `${i * 0.15}s` } as CSSProperties}
+                  >
+                    ★
+                  </span>
+                ) : (
+                  <span key={i} className="star-empty">
+                    ★
+                  </span>
+                ),
+              )}
             </p>
             {stage.mode === 'block' ? (
               <p>つかったブロック: {countBlocks(blocks)}こ</p>

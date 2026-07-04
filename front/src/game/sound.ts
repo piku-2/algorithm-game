@@ -66,6 +66,11 @@ class SoundManager {
     });
   }
 
+  /** クリアダイアログで★が1つずつ出現するときの「ぽろん」音(★の数だけ音程が上がる) */
+  star(index: number) {
+    this.sfx(() => this.tone(660 + index * 110, 0.16, 'triangle', 0.07));
+  }
+
   toggleSfx(): boolean {
     this.sfxEnabled = !this.sfxEnabled;
     localStorage.setItem(SFX_KEY, this.sfxEnabled ? 'on' : 'off');
