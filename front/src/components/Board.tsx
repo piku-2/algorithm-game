@@ -33,9 +33,11 @@ interface Props {
   crashed: boolean;
   goaled: boolean;
   skin?: Skin;
+  /** 通過したマス(あしあと表示用)。古いものほど薄く表示する */
+  trail?: Pos[];
 }
 
-export function Board({ stage, pos, dir, crashed, goaled, skin }: Props) {
+export function Board({ stage, pos, dir, crashed, goaled, skin, trail = [] }: Props) {
   const [quip, setQuip] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,6 +66,25 @@ export function Board({ stage, pos, dir, crashed, goaled, skin }: Props) {
             {cell === 'goal' && <span className="goal-flag">🚩</span>}
           </div>
         )),
+      )}
+      {trail.length > 0 && (
+        <div className="footprints" aria-hidden="true">
+          {trail.slice(-40).map((p, i, arr) => (
+            <span
+              key={i}
+              className="footprint"
+              style={
+                {
+                  '--px': p.x,
+                  '--py': p.y,
+                  opacity: 0.15 + (0.35 * (i + 1)) / arr.length,
+                } as CSSProperties
+              }
+            >
+              ・
+            </span>
+          ))}
+        </div>
       )}
       <span
         className={`player ${crashed ? 'player-crashed player-shake' : ''} ${goaled ? 'player-goaled' : ''}`}

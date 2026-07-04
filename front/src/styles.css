@@ -466,6 +466,21 @@ h1, h2, h3 {
 .cell-goal { background: #ffe9c9; }
 .cell-wall { background: var(--wall); }
 
+.footprint {
+  position: absolute;
+  left: calc(var(--px) * (var(--cell-size) + 2px));
+  top: calc(var(--py) * (var(--cell-size) + 2px));
+  width: var(--cell-size);
+  height: var(--cell-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--cell-size) * 0.5);
+  color: var(--primary);
+  z-index: 1;
+  pointer-events: none;
+}
+
 .player {
   position: absolute;
   left: calc(var(--px) * (var(--cell-size) + 2px));

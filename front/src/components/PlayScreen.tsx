@@ -67,6 +67,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
   const [status, setStatus] = useState<Status>('editing');
   const [pos, setPos] = useState<Pos>({ x: stage.start.x, y: stage.start.y });
   const [dir, setDir] = useState<Direction>(stage.start.dir);
+  const [trail, setTrail] = useState<Pos[]>([]);
   const [values, setValues] = useState<number[]>(stage.puzzle?.values ?? []);
   const [lastSwap, setLastSwap] = useState<[number, number] | null>(null);
   const [speed, setSpeed] = useState(300); // ms / step
@@ -111,6 +112,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     setStatus('editing');
     setPos({ x: stage.start.x, y: stage.start.y });
     setDir(stage.start.dir);
+    setTrail([]);
     setValues(stage.puzzle?.values ?? []);
     setLastSwap(null);
     setStars(null);
@@ -146,6 +148,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
     (ev: TraceEvent, starsOnGoal: () => 1 | 2 | 3) => {
       switch (ev.type) {
         case 'move':
+          setTrail((t) => [...t, ev.from]);
           setPos(ev.to);
           sound.move();
           break;
@@ -331,6 +334,7 @@ export function PlayScreen({ stage, onClear, onBack, onNext, skin }: Props) {
               crashed={status === 'crashed'}
               goaled={status === 'goal'}
               skin={skin}
+              trail={trail}
             />
           )}
           <div className="controls">
