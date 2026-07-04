@@ -184,7 +184,21 @@ h1, h2, h3 {
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
   margin-top: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  transition: background 0.2s;
 }
+
+.world-0 { background: #eaf7e6; }
+.world-1 { background: #efe6d8; }
+.world-2 { background: #e3f2fb; }
+.world-3 { background: #fdf3d8; }
+.world-4 { background: #e5f3e0; }
+.world-5 { background: #eee7f5; }
+.world-6 { background: #e5f7fb; }
+.world-7 { background: #fbe6e6; }
+.world-8 { background: #e6e9fb; }
+.world-9 { background: #f7f0e3; }
 
 @media (max-width: 640px) {
   .stage-cards {
@@ -669,6 +683,11 @@ h1, h2, h3 {
   gap: 12px;
   margin-top: 14px;
   justify-content: center;
+}
+
+.world-label {
+  font-weight: bold;
+  font-size: 1.05rem;
 }
 
 .palette-help {

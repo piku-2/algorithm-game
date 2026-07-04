@@ -5,6 +5,24 @@ export type Progress = Record<string, 1 | 2 | 3>;
 
 const PAGE_SIZE = 20;
 
+interface World {
+  name: string;
+  emoji: string;
+}
+
+const WORLDS: World[] = [
+  { name: 'くさはら', emoji: '🌱' },
+  { name: 'どうくつ', emoji: '🕳️' },
+  { name: 'うみ', emoji: '🌊' },
+  { name: 'すなば', emoji: '🏜️' },
+  { name: 'もり', emoji: '🌲' },
+  { name: 'やま', emoji: '⛰️' },
+  { name: 'こおり', emoji: '❄️' },
+  { name: 'かざん', emoji: '🌋' },
+  { name: 'うちゅう', emoji: '🚀' },
+  { name: 'ほし', emoji: '⭐' },
+];
+
 interface Props {
   mode: 'block' | 'code';
   stages: Stage[];
@@ -14,8 +32,14 @@ interface Props {
 }
 
 export function StageSelect({ mode, stages, progress, onSelect, onBack }: Props) {
-  const [page, setPage] = useState(0);
+  // まえに開いたときにクリア済みだったページではなく、いちばん最初の未クリアステージの
+  // ページを自動的にひらく(全クリア済みなら1ページ目)
+  const [page, setPage] = useState(() => {
+    const firstUncleared = stages.findIndex((s) => !progress[s.id]);
+    return firstUncleared === -1 ? 0 : Math.floor(firstUncleared / PAGE_SIZE);
+  });
   const pages = Math.max(1, Math.ceil(stages.length / PAGE_SIZE));
+  const world = WORLDS[page % WORLDS.length];
   const clearedCount = useMemo(
     () => stages.filter((s) => progress[s.id]).length,
     [stages, progress],
@@ -35,14 +59,14 @@ export function StageSelect({ mode, stages, progress, onSelect, onBack }: Props)
         <button disabled={page === 0} onClick={() => setPage(page - 1)}>
           ← まえ
         </button>
-        <span>
-          {page + 1} / {pages} ページ
+        <span className="world-label">
+          {world.emoji} {world.name}ワールド（{page + 1} / {pages}）
         </span>
         <button disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>
           つぎ →
         </button>
       </div>
-      <div className="stage-cards">
+      <div className={`stage-cards world-${page % WORLDS.length}`}>
         {visible.map((stage, i) => {
           const stars = progress[stage.id];
           const num = page * PAGE_SIZE + i + 1;
