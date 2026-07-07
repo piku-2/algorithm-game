@@ -1,0 +1,14 @@
+# Rust
+back/target/
+
+# Node
+front/node_modules/
+front/dist/
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
